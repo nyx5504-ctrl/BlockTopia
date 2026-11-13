@@ -25,11 +25,16 @@ function modal(html){
   m.onclick = e => { if (e.target === m || e.target.tagName === "BUTTON" && e.target.classList.contains("ghost")) m.remove(); };
   document.body.appendChild(m); return m;
 }
-export function showInstall(dev = detectDevice()){
+export function showInstall(dev = detectDevice(), launchLink = ""){
   const link = CONFIG.DOWNLOADS[dev];
-  modal(`<h3 style="margin:0 0 8px">Get BlockTopia for ${NAMES[dev]}</h3><p style="color:var(--mute)">${HELP[dev]}</p>` +
+  const m = modal(`<h3 style="margin:0 0 8px">Get BlockTopia for ${NAMES[dev]}</h3><p style="color:var(--mute)">${HELP[dev]}</p>` +
     (link ? `<a class="btn" style="display:block;text-align:center;text-decoration:none" href="${link}">Download for ${NAMES[dev]}</a>`
-          : `<p class="msg err">No ${NAMES[dev]} build has been published yet (set it in js/config.js).</p>`));
+          : `<p class="msg err">No ${NAMES[dev]} build has been published yet (set it in js/config.js).</p>`) +
+    (launchLink ? `<hr style="border:0;border-top:1px solid #333;margin:16px 0"><p style="color:var(--mute);margin:0 0 8px">Already installed? Copy the launch link, open BlockTopia and paste it into <b>Join from link</b>. It works once and expires in about a minute.</p><button class="btn" data-copy>Copy launch link</button>` : ""));
+  m.querySelector("[data-copy]")?.addEventListener("click", async e => {
+    try { await navigator.clipboard.writeText(launchLink); e.target.textContent = "Copied! Open BlockTopia now"; }
+    catch { window.prompt("Copy this launch link:", launchLink); }
+  });
 }
 export async function launchGame(gameId, joinUid, toast = alert){
   if (!CONFIG.BACKEND_URL) return toast("Backend URL isn't configured yet (js/config.js).");
@@ -42,6 +47,7 @@ export async function launchGame(gameId, joinUid, toast = alert){
   let left = false; const mark = () => { left = true; };
   window.addEventListener("blur", mark); document.addEventListener("visibilitychange", mark);
   // one-time code, valid ~60s and usable once. No passwords/permanent tokens ever go in the URL.
-  location.href = `blocktopia://play?game=${encodeURIComponent(gameId)}&code=${encodeURIComponent(data.code)}&ws=${encodeURIComponent(data.ws)}`;
-  setTimeout(() => { window.removeEventListener("blur", mark); document.removeEventListener("visibilitychange", mark); if (!left) showInstall(); }, 2500);
+  const deepLink = `blocktopia://play?game=${encodeURIComponent(gameId)}&code=${encodeURIComponent(data.code)}&ws=${encodeURIComponent(data.ws)}`;
+  location.href = deepLink;
+  setTimeout(() => { window.removeEventListener("blur", mark); document.removeEventListener("visibilitychange", mark); if (!left) showInstall(detectDevice(), deepLink); }, 2500);
 }
