@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function authed() { return request.auth != null; }
+    function accepted(a, b) {
+      return exists(/databases/$(db)/documents/friendRequests/$(a + '_' + b))
+        && get(/databases/$(db)/documents/friendRequests/$(a + '_' + b)).data.status == 'accepted';
+    }
+    function allowsRequests(to) {
+      return get(/databases/$(db)/documents/users/$(to)).data.get('allowRequests', 'everyone') != 'none';
+    }
+
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if authed() && request.resource.data.uid == request.auth.uid && name.matches('^[a-z0-9_]{3,20}$');
+    }
+    match /users/{uid} {
+      allow read: if authed();
+      allow create: if request.auth.uid == uid;
+      allow update: if request.auth.uid == uid && request.resource.data.usernameLower == resource.data.usernameLower;
+    }
+    match /friendRequests/{id} {
+      allow read: if authed() && (resource == null || resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if authed() && request.resource.data.from == request.auth.uid && request.resource.data.to != request.auth.uid
+        && id == request.auth.uid + '_' + request.resource.data.to && request.resource.data.status == 'pending'
+        && allowsRequests(request.resource.data.to);
+      allow update: if authed() && request.resource.data.from == resource.data.from && request.resource.data.to == resource.data.to
+        && ((resource.data.from == request.auth.uid && resource.data.status != 'pending' && request.resource.data.status == 'pending' && allowsRequests(resource.data.to))
+         || (resource.data.to == request.auth.uid && request.resource.data.status in ['accepted', 'rejected']));
+      allow delete: if authed() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+    }
+    match /friends/{uid}/list/{fid} {
+      allow read: if authed();
+      allow create: if authed() && (request.auth.uid == uid || request.auth.uid == fid) && (accepted(uid, fid) || accepted(fid, uid));
+      allow delete: if authed() && (request.auth.uid == uid || request.auth.uid == fid);
+    }
+    match /notifications/{uid}/items/{id} {
+      allow read, update, delete: if authed() && request.auth.uid == uid;
+      allow create: if authed() && request.resource.data.from == request.auth.uid && request.resource.data.read == false
+        && request.resource.data.type in ['friend_request', 'friend_accepted'];
+    }
+    match /games/{gid}/likes/{uid} {
+      allow read: if authed();
+      allow create, delete: if authed() && request.auth.uid == uid;
+    }
+    // Written only by the game server (Admin SDK bypasses these rules):
+    match /presence/{uid} { allow read: if authed(); }
+    match /stats/{uid}    { allow read: if authed(); }
+    match /blocks/{uid}/list/{t} { allow read: if authed() && request.auth.uid == uid; }   // written by the game server
+    match /reports/{id}   { allow read, write: if false; }
+  }
+}

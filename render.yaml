@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: blocktopia-server
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        sync: false   # e.g. https://YOURNAME.github.io
+      - key: PUBLIC_WS_URL
+        sync: false   # e.g. wss://blocktopia-server.onrender.com
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false   # paste the service-account JSON as ONE line

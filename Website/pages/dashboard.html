@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BlockTopia - Home</title><link rel="icon" href="../assets/logo.svg"><link rel="stylesheet" href="../css/style.css"></head>
+<body><div class="app">
+<nav class="side"><div class="brand"><img src="../assets/logo.svg" alt="">BlockTopia</div>
+<a class="nav on" href="dashboard.html">Home</a><a class="nav" href="friends.html">Friends</a><a class="nav" href="profile.html">Profile</a><a class="nav" href="settings.html">Settings</a>
+<div class="grow"></div><button class="nav" id="logout">Log out</button></nav>
+<main class="main">
+<div class="top"><input id="search" placeholder="Search games"><div class="sp"></div>
+<button class="btn ghost" id="dl" type="button">Get the app</button><button class="btn ghost" id="bell" type="button">Notifications</button>
+<div class="me"><div class="av" id="av">?</div><div id="uname">...</div></div></div>
+<div id="verifyBar" class="empty hide" style="margin-bottom:18px;text-align:left">Verify your email to secure your account. <a href="verify.html" style="margin-left:8px;color:var(--text)">Verify now</a></div>
+<h2>Featured</h2><div id="featured"></div>
+<h2>Recently played</h2><div id="recent"></div>
+<h2>Popular</h2><div id="popular" class="grid"></div>
+</main></div><div id="toast" class="toast hide"></div>
+<script type="module" src="../js/dashboard.js"></script></body></html>

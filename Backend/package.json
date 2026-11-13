@@ -1,0 +1,4 @@
+{ "name": "blocktopia-backend", "version": "1.0.0", "type": "module", "private": true,
+  "scripts": { "start": "node servers/index.js", "test": "node test/smoke.mjs" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "firebase-admin": "^12.7.0", "ws": "^8.18.0" } }
