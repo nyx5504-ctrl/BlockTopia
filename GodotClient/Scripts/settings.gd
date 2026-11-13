@@ -1,6 +1,6 @@
 extends Node
 ## Global settings, input map, launch info (from blocktopia:// links) and protocol registration.
-const WEBSITE_URL := "https://YOURNAME.github.io/BlockTopia/"   # <- set to your GitHub Pages URL
+const WEBSITE_URL := "https://nyx5504-ctrl.github.io/BlockTopia/"   # <- set to your GitHub Pages URL
 const CFG_PATH := "user://settings.cfg"
 signal changed
 
