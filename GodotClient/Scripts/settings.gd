@@ -82,10 +82,16 @@ func register_protocol() -> void:
 	var exe := OS.get_executable_path()
 	if registered_exe == exe: return
 	if OS.has_feature("windows"):
-		var k := "HKCU\\Software\\Classes\\blocktopia"
-		OS.execute("reg", ["add", k, "/ve", "/d", "URL:BlockTopia Protocol", "/f"])
-		OS.execute("reg", ["add", k, "/v", "URL Protocol", "/d", "", "/f"])
-		OS.execute("reg", ["add", k + "\\shell\\open\\command", "/ve", "/d", "\"%s\" \"%%1\"" % exe, "/f"])
+		# Write a .reg file and import it silently. (reg.exe via OS.execute drops empty args and quotes, which broke the link.)
+		var win_exe := exe.replace("/", "\\")
+		var reg_path := OS.get_user_data_dir() + "/blocktopia-link.reg"
+		var f := FileAccess.open(reg_path, FileAccess.WRITE)
+		if f == null: return
+		var q := "\""
+		var cmd := q + win_exe.replace("\\", "\\\\") + q + " " + q + "%1" + q
+		f.store_string("Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Classes\\blocktopia]\r\n@=\"URL:BlockTopia Protocol\"\r\n\"URL Protocol\"=\"\"\r\n\r\n[HKEY_CURRENT_USER\\Software\\Classes\\blocktopia\\shell\\open\\command]\r\n@=\"" + cmd.replace("\"", "\\\"") + "\"\r\n")
+		f.close()
+		OS.create_process("regedit", ["/s", reg_path.replace("/", "\\")])
 	elif OS.has_feature("linux"):
 		var dir := OS.get_environment("HOME") + "/.local/share/applications"
 		DirAccess.make_dir_recursive_absolute(dir)
