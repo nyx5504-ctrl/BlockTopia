@@ -21,7 +21,7 @@ func _ready() -> void:
 	apply_audio()
 
 func is_mobile() -> bool:
-	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available()
+	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available() or "--mobile" in OS.get_cmdline_user_args() or "--mobile" in OS.get_cmdline_args()
 
 func load_cfg() -> void:
 	var c := ConfigFile.new()

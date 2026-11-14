@@ -12,7 +12,7 @@ const NAME_COLORS := ["#fd7b7b", "#ffb86b", "#f7e26b", "#8be28b", "#6bd6e8", "#7
 
 func _ready() -> void:
 	layer = 5
-	var root := Control.new(); root.set_anchors_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(root)
+	var root := Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(root)
 	var bar := HBoxContainer.new(); bar.position = Vector2(12, 10); bar.add_theme_constant_override("separation", 8); root.add_child(bar)
 	menu_btn = IconButton.new("menu"); menu_btn.pressed.connect(func(): menu_pressed.emit()); bar.add_child(menu_btn)
 	chat_btn = IconButton.new("chat"); chat_btn.pressed.connect(toggle_window); bar.add_child(chat_btn)

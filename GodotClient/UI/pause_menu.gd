@@ -10,9 +10,9 @@ const REASONS := ["Inappropriate chat", "Harassment", "Cheating", "Other"]
 
 func _ready() -> void:
 	layer = 10; visible = false
-	root = Control.new(); root.set_anchors_preset(Control.PRESET_FULL_RECT); add_child(root)
-	var dim := ColorRect.new(); dim.color = Color(0, 0, 0, 0.6); dim.set_anchors_preset(Control.PRESET_FULL_RECT); root.add_child(dim)
-	var center := CenterContainer.new(); center.set_anchors_preset(Control.PRESET_FULL_RECT); root.add_child(center)
+	root = Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
+	var dim := ColorRect.new(); dim.color = Color(0, 0, 0, 0.6); dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.add_child(dim)
+	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.add_child(center)
 	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(440, 0); center.add_child(panel)
 	var host := MarginContainer.new(); for s in ["left", "right", "top", "bottom"]: host.add_theme_constant_override("margin_" + s, 18)
 	panel.add_child(host)

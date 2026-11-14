@@ -48,14 +48,21 @@ func _build_ui() -> void:
 	pause.leave_requested.connect(_leave); pause.respawn_requested.connect(func(): Net.request_respawn())
 	if Settings.is_mobile():
 		var tl := CanvasLayer.new(); tl.layer = 3; add_child(tl); touch = TouchControls.new(); tl.add_child(touch)
+		touch.is_ui = _touch_on_ui
 	var hud := CanvasLayer.new(); hud.layer = 8; add_child(hud)
 	toast = PanelContainer.new(); toast.set_anchors_preset(Control.PRESET_CENTER_TOP); toast.position = Vector2(-170, 16); toast.custom_minimum_size = Vector2(340, 0); toast.visible = false; toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
 	var ol := CanvasLayer.new(); ol.layer = 20; add_child(ol)
-	overlay = Label.new(); overlay.set_anchors_preset(Control.PRESET_FULL_RECT); overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	overlay = Label.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	overlay.add_theme_font_size_override("font_size", 26); overlay.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var bg := ColorRect.new(); bg.color = Color(0.04, 0.04, 0.05, 0.92); bg.set_anchors_preset(Control.PRESET_FULL_RECT); overlay.add_child(bg); bg.show_behind_parent = true
+	var bg := ColorRect.new(); bg.color = Color(0.04, 0.04, 0.05, 0.92); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.add_child(bg); bg.show_behind_parent = true
 	ol.add_child(overlay)
+
+func _touch_on_ui(p: Vector2) -> bool:
+	if pause.visible or overlay.visible or _leaving: return true
+	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup]:
+		if ctl != null and ctl.is_visible_in_tree() and ctl.get_global_rect().has_point(p): return true
+	return false
 
 func _toast(t: String) -> void:
 	toast_label.text = t; toast.visible = true; _toast_id += 1; var me := _toast_id
@@ -82,7 +89,7 @@ func _on_welcome(m: Dictionary) -> void:
 		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff")))); local.touch = touch
 	local.teleport(Vector3(m.x, m.y, m.z))
 	for p in m.players: _add_remote(p)
-	chat.system("Welcome to Baseplate, %s! Hold the right mouse button to look around. Click a name in the player list for options." % Net.my_name)
+	chat.system("Welcome to Baseplate, %s! %s" % [Net.my_name, "Drag the right side of the screen to look around." if Settings.is_mobile() else "Hold the right mouse button to look around. Click a name in the player list for options."])
 	if _selftest: _run_selftest()
 
 func _add_remote(p: Dictionary) -> void:
@@ -170,4 +177,6 @@ func _run_shots() -> void:      # used by Backend/test/shots.mjs to review visua
 	await _snap("4_overview")
 	Settings.cam_distance = 150.0; local.yaw = 2.6; local.pitch = -0.35; await get_tree().create_timer(0.8).timeout
 	await _snap("5_outer")
+	Settings.cam_distance = 6.0; local.yaw = 2.585; local.pitch = 0.6; await get_tree().create_timer(0.8).timeout
+	await _snap("6_sun")
 	await _leave()

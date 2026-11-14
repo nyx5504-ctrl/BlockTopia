@@ -17,7 +17,7 @@ var _row_nodes := {}
 
 func _ready() -> void:
 	layer = 4
-	var root := Control.new(); root.set_anchors_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(root)
+	var root := Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(root)
 	panel = PanelContainer.new(); panel.anchor_left = 1.0; panel.anchor_right = 1.0; panel.offset_left = -246; panel.offset_right = -12; panel.offset_top = 12
 	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.04, 0.04, 0.05, 0.66); sb.set_corner_radius_all(12); sb.set_content_margin_all(8); panel.add_theme_stylebox_override("panel", sb); root.add_child(panel)
 	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 4); panel.add_child(v)
@@ -52,7 +52,7 @@ func refresh() -> void:
 		var info: Dictionary = Net.players[id]
 		var b := Button.new(); b.flat = true; b.custom_minimum_size = Vector2(0, 34); b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var sb := StyleBoxFlat.new(); sb.bg_color = Color(1, 1, 1, 0.14); sb.set_corner_radius_all(8); b.add_theme_stylebox_override("hover", sb)
-		var h := HBoxContainer.new(); h.set_anchors_preset(Control.PRESET_FULL_RECT); h.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_theme_constant_override("separation", 8); b.add_child(h)
+		var h := HBoxContainer.new(); h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); h.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_theme_constant_override("separation", 8); b.add_child(h)
 		var sw := ColorRect.new(); sw.color = Color(str(info.get("color", "#ffffff"))); sw.custom_minimum_size = Vector2(10, 10); sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER; sw.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_child(sw)
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; n.clip_text = true; n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if Net.blocked.has(id): n.modulate = Color(1, 1, 1, 0.4); n.text += " (blocked)"

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0b0b0c"/>
+  <g transform="translate(256 262)">
+    <!-- back/top cube -->
+    <g transform="translate(0 -62)">
+      <polygon points="0,-78 67.5,-39 0,0 -67.5,-39" fill="#ffffff"/>
+      <polygon points="-67.5,-39 0,0 0,78 -67.5,39" fill="#8d8d93"/>
+      <polygon points="0,0 67.5,-39 67.5,39 0,78" fill="#c9c9ce"/>
+    </g>
+    <!-- front left cube -->
+    <g transform="translate(-67.5 39)">
+      <polygon points="0,-78 67.5,-39 0,0 -67.5,-39" fill="#ffffff"/>
+      <polygon points="-67.5,-39 0,0 0,78 -67.5,39" fill="#8d8d93"/>
+      <polygon points="0,0 67.5,-39 67.5,39 0,78" fill="#c9c9ce"/>
+    </g>
+    <!-- front right cube -->
+    <g transform="translate(67.5 39)">
+      <polygon points="0,-78 67.5,-39 0,0 -67.5,-39" fill="#ffffff"/>
+      <polygon points="-67.5,-39 0,0 0,78 -67.5,39" fill="#8d8d93"/>
+      <polygon points="0,0 67.5,-39 67.5,39 0,78" fill="#c9c9ce"/>
+    </g>
+  </g>
+</svg>
