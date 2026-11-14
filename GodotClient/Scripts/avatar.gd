@@ -16,6 +16,8 @@ var rest_g := {}            # bone index -> global rest basis (skeleton space)
 var rest_p := {}            # bone index -> rest position
 var _t := 0.0
 var _phase := 0.0
+var emote := ""             # wave | dance | cheer | laugh (cancelled as soon as the character moves)
+var _emote_until := 0.0
 var _cur := {"arm_l": 0.0, "arm_r": 0.0, "leg_l": 0.0, "leg_r": 0.0, "lean": 0.0, "out_l": 0.0, "out_r": 0.0, "bob": 0.0, "head": 0.0, "twist": 0.0, "legout": 0.0}
 var _bubble: Node3D
 var _name_label: Label3D
@@ -33,6 +35,11 @@ func setup(display_name: String, color: Color) -> void:
 	_name_label = Label3D.new(); _name_label.text = display_name; _name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_name_label.position = Vector3(0, 2.85, 0); _name_label.pixel_size = 0.006; _name_label.font_size = 48; _name_label.outline_size = 14
 	_name_label.no_depth_test = true; _name_label.render_priority = 3; add_child(_name_label)
+	_name_label.visible = Settings.show_names
+	Settings.changed.connect(_apply_names)
+
+func _apply_names() -> void:
+	if _name_label: _name_label.visible = Settings.show_names
 
 ## Roblox "noob" colours: yellow head+arms, coloured torso, green legs (vertex colours chosen by dominant bone weight).
 func _paint(mi: MeshInstance3D, shirt: Color) -> void:
@@ -70,9 +77,27 @@ func _swing_basis(fwd: float, out: float, left_side: bool) -> Basis:
 	# fwd > 0 swings the limb forward; out > 0 spreads it sideways away from the body
 	return Basis(Vector3.UP, (-out if left_side else out)) * Basis(Vector3.RIGHT, -fwd)
 
+func play_emote(e: String) -> void:
+	if e not in ["wave", "dance", "cheer", "laugh"]: return
+	emote = e; _emote_until = _t + (2.2 if e == "laugh" else 3.4)
+
+func _apply_emote(T: Dictionary) -> void:
+	var w := _t * 7.0
+	match emote:
+		"wave":
+			T.arm_r = 2.75; T.out_r = 0.55 + sin(_t * 9.0) * 0.45; T.head = 0.05; T.twist = sin(_t * 3.0) * 0.04
+		"cheer":
+			T.arm_l = 2.9; T.arm_r = 2.9; T.out_l = 0.45 + sin(_t * 10.0) * 0.12; T.out_r = 0.45 + sin(_t * 10.0) * 0.12; T.bob = absf(sin(_t * 8.0)) * 0.16; T.head = 0.18
+		"dance":
+			T.arm_l = 1.2 + sin(w) * 1.5; T.arm_r = 1.2 - sin(w) * 1.5; T.out_l = 0.3; T.out_r = 0.3
+			T.leg_l = sin(w) * 0.5; T.leg_r = -sin(w) * 0.5; T.twist = sin(w) * 0.35; T.bob = absf(sin(w)) * 0.12; T.head = sin(w * 0.5) * 0.15
+		"laugh":
+			T.arm_l = 0.5; T.arm_r = 0.5; T.lean = -0.1 + sin(_t * 15.0) * 0.05; T.head = -0.25 + sin(_t * 15.0) * 0.08; T.bob = sin(_t * 15.0) * 0.03
+
 func _process(delta: float) -> void:
 	if skel == null: return
 	_t += delta
+	if emote != "" and (anim != "idle" or _t > _emote_until): emote = ""
 	var T := {"arm_l": 0.0, "arm_r": 0.0, "leg_l": 0.0, "leg_r": 0.0, "lean": 0.0, "out_l": 0.08, "out_r": 0.08, "bob": 0.0, "head": 0.0, "twist": 0.0, "legout": 0.0}
 	var k := 1.0 - exp(-16.0 * delta)
 	match anim:
@@ -92,6 +117,7 @@ func _process(delta: float) -> void:
 			var br := sin(_t * 1.7)
 			T.arm_l = br * 0.03; T.arm_r = -br * 0.03; T.out_l = 0.09 + br * 0.015; T.out_r = 0.09 + br * 0.015
 			T.bob = br * 0.025; T.head = sin(_t * 0.8) * 0.03; T.twist = sin(_t * 0.6) * 0.03
+			if emote != "": _apply_emote(T)
 	for key in T: _cur[key] = lerpf(_cur[key], T[key], k)
 	# torso: lean about the hips, twist about the spine, bob up/down
 	var torso: int = bone.torso

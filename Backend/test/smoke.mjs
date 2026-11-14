@@ -17,7 +17,10 @@ function client(code, session) {
 }
 try {
   console.log("filter unit checks");
-  for (const bad of ["you are a f u c k", "fuuuck this", "sh1t", "email me bob@gmail.com", "call 555 123 4567", "visit www.evil.com", "add me on snapchat", "my number is hi"]) ok(!checkMessage(bad).ok, `blocks: ${bad}`);
+  for (const bad of ["email me bob@gmail.com", "call 555 123 4567", "visit www.evil.com", "add me on snapchat", "my number is hi", "kill yourself"]) ok(!checkMessage(bad).ok, `blocks: ${bad}`);
+  for (const bad of ["you are a f u c k", "fuuuck this", "sh1t", "ass!", "sh.it", "fvck you", "ｆｕｃｋ", "you sharmouta", "انت شرموطه", "ya kalb"]) { const r = checkMessage(bad); ok(r.ok && r.masked && /#/.test(r.text), `masks: ${bad} -> ${r.text}`); }
+  for (const good of ["hello world", "Scunthorpe is a town", "my pen is blue", "pass the grass", "assassin creed", "class is fun", "a cocktail please", "pen is mine", "what a nice day!"]) { const r = checkMessage(good); ok(r.ok && !r.masked && r.text === good, `allows: ${good}`); }
+  ok(checkMessage("what the f*ck man").text === "what the #### man", "only the bad word is hidden");
   for (const good of ["hello everyone!", "I love this game", "assume the class passed", "Scunthorpe is a town"]) ok(checkMessage(good).ok, `allows: ${good}`);
 
   console.log("launch + auth");
@@ -41,8 +44,12 @@ try {
 
   console.log("chat");
   A.send({ t:"chat", text:"hello bob" }); ok(await B.wait(m => m.t === "chat" && m.text === "hello bob"), "chat delivered");
-  await sleep(450); A.send({ t:"chat", text:"you f u c k" }); ok(await A.wait(m => m.t === "chat_blocked" && m.reason === "language"), "profanity blocked w/ friendly warning");
-  ok(!B.msgs.some(m => m.t === "chat" && /f u c k/.test(m.text)), "blocked text never reaches others");
+  A.send({ t:"emote", e:"wave" }); ok(await B.wait(m => m.t === "emote" && m.e === "wave"), "emote reaches other players");
+  A.send({ t:"emote", e:"hax" }); await sleep(1600); ok(!B.msgs.some(m => m.t === "emote" && m.e === "hax"), "unknown emotes are ignored");
+  A.send({ t:"ping", n: 42 }); ok(await A.wait(m => m.t === "pong" && m.n === 42), "ping/pong");
+  await sleep(450); A.send({ t:"chat", text:"you f u c k" }); ok(await B.wait(m => m.t === "chat" && m.text === "you # # # #"), "profanity is hidden with #### for everyone");
+  ok(!B.msgs.some(m => m.t === "chat" && /f u c k/.test(m.text)), "original bad word never reaches others");
+  ok(await A.wait(m => m.t === "sys" && /hidden/.test(m.text)), "sender gets a friendly note");
   await sleep(450); A.send({ t:"chat", text:"mail me x@y.com" }); ok(await A.wait(m => m.t === "chat_blocked" && m.reason === "personal"), "personal info blocked");
   B.send({ t:"mute", id: wa.id, on:true }); await sleep(150); const n = B.msgs.length;
   await sleep(450); A.send({ t:"chat", text:"are you there" }); await sleep(300);

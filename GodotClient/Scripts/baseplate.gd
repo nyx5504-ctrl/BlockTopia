@@ -12,6 +12,7 @@ var world: WorldBuilder
 var sun: DirectionalLight3D
 var toast: PanelContainer
 var toast_label: Label
+var fps_label: Label
 var _toast_id := 0
 var _send_t := 0.0
 var _leaving := false
@@ -24,6 +25,7 @@ func _ready() -> void:
 	_build_ui()
 	Settings.changed.connect(_apply_quality); _apply_quality()
 	Net.chat_received.connect(_on_chat_bubble); Net.friend_result.connect(func(ok, t): _toast(t); chat.system(t, "#8be28b" if ok else "#e8b33c"))
+	Net.emote_received.connect(func(id, e): if remotes.has(id): remotes[id].node.play_emote(e))
 	Net.welcomed.connect(_on_welcome); Net.player_joined.connect(_add_remote)
 	Net.player_left.connect(_on_left); Net.snapshot.connect(_on_snapshot)
 	Net.respawned.connect(func(p, _e): local.teleport(p)); Net.corrected.connect(func(p, _e): local.teleport(p))
@@ -46,12 +48,14 @@ func _build_ui() -> void:
 	plist = PlayerList.new(); add_child(plist)
 	chat.menu_pressed.connect(func(): pause.toggle())
 	pause.leave_requested.connect(_leave); pause.respawn_requested.connect(func(): Net.request_respawn())
+	pause.emote_requested.connect(func(e): local.avatar.play_emote(e); Net.send_emote(e))
 	if Settings.is_mobile():
 		var tl := CanvasLayer.new(); tl.layer = 3; add_child(tl); touch = TouchControls.new(); tl.add_child(touch)
 		touch.is_ui = _touch_on_ui
 	var hud := CanvasLayer.new(); hud.layer = 8; add_child(hud)
 	toast = PanelContainer.new(); toast.set_anchors_preset(Control.PRESET_CENTER_TOP); toast.position = Vector2(-170, 16); toast.custom_minimum_size = Vector2(340, 0); toast.visible = false; toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
+	fps_label = Label.new(); fps_label.set_anchors_preset(Control.PRESET_CENTER_TOP); fps_label.position = Vector2(-40, 66); fps_label.add_theme_font_size_override("font_size", 16); fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9)); fps_label.add_theme_constant_override("outline_size", 6); fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(fps_label)
 	var ol := CanvasLayer.new(); ol.layer = 20; add_child(ol)
 	overlay = Label.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	overlay.add_theme_font_size_override("font_size", 26); overlay.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -136,6 +140,8 @@ func _exit_game() -> void:
 # ---------------- per-frame ----------------
 func _process(delta: float) -> void:
 	world.animate(delta)
+	fps_label.visible = Settings.show_fps
+	if fps_label.visible: fps_label.text = "%d FPS" % Engine.get_frames_per_second()
 	for id in remotes:
 		var r = remotes[id]; var n: Avatar = r.node
 		n.position = n.position.lerp(r.target, 1.0 - exp(-14.0 * delta)); n.rotation.y = lerp_angle(n.rotation.y, r.ry, 1.0 - exp(-14.0 * delta))
@@ -179,4 +185,13 @@ func _run_shots() -> void:      # used by Backend/test/shots.mjs to review visua
 	await _snap("5_outer")
 	Settings.cam_distance = 6.0; local.yaw = 2.585; local.pitch = 0.6; await get_tree().create_timer(0.8).timeout
 	await _snap("6_sun")
+	Settings.cam_distance = 6.0; local.yaw = 0.0; local.pitch = -0.25; Settings.show_fps = true
+	pause.open(); await _snap("7_menu_players")
+	pause.show_page("Chat"); await _snap("8_menu_chat")
+	pause.show_page("Emotes"); await _snap("9_menu_emotes")
+	pause.show_page("Settings"); await _snap("10_menu_settings")
+	pause.show_page("Help"); await _snap("11_menu_help")
+	pause.close()
+	local.avatar.play_emote("wave"); Net.send_emote("wave"); await get_tree().create_timer(0.7).timeout; await _snap("12_emote_wave")
+	local.avatar.play_emote("dance"); await get_tree().create_timer(0.5).timeout; await _snap("13_emote_dance")
 	await _leave()

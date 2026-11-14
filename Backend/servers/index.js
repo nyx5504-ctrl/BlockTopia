@@ -91,6 +91,7 @@ function notifyBlocks(p) {   // tell clients about block relationships so the UI
 }
 const presence = (p, joinable) => store.setPresence(p.uid, { game: "baseplate", server: p.room.id, joinable, username: p.name });
 
+const EMOTES = new Set(["wave", "dance", "cheer", "laugh"]);
 function handleChat(p, m) {
   const now = Date.now(), r = p.room, warn = reason => r.send(p, { t: "chat_blocked", reason, text: FRIENDLY[reason] || "" });
   if (now < p.cooldownUntil) return warn("cooldown");
@@ -99,6 +100,11 @@ function handleChat(p, m) {
   p.chatTimes.push(now); p.lastMsgAt = now;
   const v = checkMessage(m.text);
   if (v.ok && v.text.toLowerCase() === p.lastMsg && now - p.lastOkAt < 15000) { v.ok = false; v.reason = "spam"; }
+  if (v.ok && v.masked) {              // bad words were hidden with ####: the message still goes out, but it counts as a strike
+    p.strikes = p.strikes.filter(t => now - t < 300000); p.strikes.push(now);
+    if (p.strikes.length >= 5) { p.cooldownUntil = now + 60000; p.strikes = []; }
+    if (now - (p.lastMaskNote || 0) > 30000) { p.lastMaskNote = now; r.send(p, { t: "sys", text: "Some words were hidden. Let's keep BlockTopia friendly!" }); }
+  }
   if (!v.ok) {
     if (v.reason === "language" || v.reason === "personal") { p.strikes = p.strikes.filter(t => now - t < 300000); p.strikes.push(now); if (p.strikes.length >= 5) { p.cooldownUntil = now + 60000; p.strikes = []; return warn("cooldown"); } }
     return warn(v.reason);
@@ -115,6 +121,11 @@ function handle(ws, m) {
     case "pos": r.applyPos(p, m); if (p.viol > 60) leaveRoom(p, "invalid_movement"); break;
     case "respawn": r.teleportToSpawn(p); break;
     case "chat": handleChat(p, m); break;
+    case "ping": r.send(p, { t: "pong", n: Number(m.n) || 0 }); break;
+    case "emote": {
+      const now = Date.now(); if (!EMOTES.has(m.e) || now - (p.lastEmote || 0) < 1500) break; p.lastEmote = now;
+      const s = JSON.stringify({ t: "emote", id: p.id, e: m.e });
+      for (const o of r.live()) if (o !== p && !o.muted.has(p.uid) && !o.blocked.has(p.uid) && o.ws.readyState === 1) o.ws.send(s); break; }
     case "mute": { const t = r.players.get(m.id); if (t && t !== p) { m.on ? p.muted.add(t.uid) : p.muted.delete(t.uid); r.send(p, { t: "mute_ok", id: t.id, on: !!m.on }); } break; }
     case "report": {
       const t = r.players.get(m.id), now = Date.now(); if (!t || t === p) break;

@@ -11,6 +11,9 @@ var fov := 70.0
 var cam_distance := 6.0
 var touch_opacity := 0.6
 var touch_size := 1.0
+var show_fps := false
+var show_names := true
+var fullscreen := false
 var registered_exe := ""
 var launch := {}            # {game, code, ws}
 var protocol_launched := false
@@ -19,6 +22,16 @@ func _ready() -> void:
 	load_cfg()
 	_register_actions()
 	apply_audio()
+	if fullscreen: apply_window()
+
+func reset_defaults() -> void:
+	sensitivity = 0.003; volume = 0.8; quality = 1; fov = 70.0; cam_distance = 6.0; touch_opacity = 0.6; touch_size = 1.0
+	show_fps = false; show_names = true; fullscreen = false
+	apply_audio(); apply_window(); save_cfg(); changed.emit()
+
+func apply_window() -> void:
+	if is_mobile(): return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
 
 func is_mobile() -> bool:
 	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available() or "--mobile" in OS.get_cmdline_user_args() or "--mobile" in OS.get_cmdline_args()
@@ -26,12 +39,12 @@ func is_mobile() -> bool:
 func load_cfg() -> void:
 	var c := ConfigFile.new()
 	if c.load(CFG_PATH) != OK: return
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "show_fps", "show_names", "fullscreen"]:
 		set(k, c.get_value("s", k, get(k)))
 
 func save_cfg() -> void:
 	var c := ConfigFile.new()
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "show_fps", "show_names", "fullscreen"]:
 		c.set_value("s", k, get(k))
 	c.save(CFG_PATH)
 	apply_audio()
@@ -78,7 +91,7 @@ func _register_actions() -> void:
 
 ## Registers blocktopia:// with the OS for the installed (non-editor) desktop client.
 func register_protocol() -> void:
-	if OS.has_feature("editor"): return
+	if OS.has_feature("editor") or protocol_launched: return      # launched by the link => the OS already points at this exe
 	var exe := OS.get_executable_path()
 	if registered_exe == exe: return
 	if OS.has_feature("windows"):

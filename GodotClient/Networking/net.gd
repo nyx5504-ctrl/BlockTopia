@@ -16,6 +16,10 @@ signal mute_changed(id: int, on: bool)
 signal report_done
 signal friend_result(ok: bool, text: String)
 signal scores_changed
+signal emote_received(id: int, emote: String)
+
+var ping_ms := -1            # round-trip time to the server, measured every few seconds
+var _ping_at := 0.0
 
 var ws := WebSocketPeer.new()
 var url := ""
@@ -54,6 +58,8 @@ func _process(_d: float) -> void:
 	ws.poll()
 	match ws.get_ready_state():
 		WebSocketPeer.STATE_OPEN:
+			if state == "online" and Time.get_ticks_msec() / 1000.0 - _ping_at > 3.0:
+				_ping_at = Time.get_ticks_msec() / 1000.0; _send({"t": "ping", "n": Time.get_ticks_msec()})
 			if not _auth_sent:
 				_auth_sent = true
 				_send({"t": "auth", "session": session} if session != "" else {"t": "auth", "code": code})
@@ -117,10 +123,13 @@ func _handle(txt: String) -> void:
 			scores_changed.emit()
 		"friend_result": friend_result.emit(bool(m.get("ok", false)), str(m.get("text", "")))
 		"report_ok": report_done.emit()
+		"emote": emote_received.emit(int(m.id), str(m.get("e", "")))
+		"pong": ping_ms = maxi(0, Time.get_ticks_msec() - int(m.get("n", 0)))
 
 func send_pos(p: Vector3, ry: float, anim: String) -> void:
 	if state == "online": _send({"t": "pos", "x": p.x, "y": p.y, "z": p.z, "ry": ry, "a": anim, "e": epoch})
 func send_chat(text: String) -> void: _send({"t": "chat", "text": text})
+func send_emote(e: String) -> void: _send({"t": "emote", "e": e})
 func request_respawn() -> void: _send({"t": "respawn"})
 func set_mute(id: int, on: bool) -> void: _send({"t": "mute", "id": id, "on": on})
 func send_friend(id: int) -> void: _send({"t": "friend", "id": id})

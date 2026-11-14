@@ -12,6 +12,6 @@ func _ready() -> void:
 	if code != "" and ws != "":
 		Settings.launch = {"game": "baseplate", "code": code, "ws": ws}
 		Settings.protocol_launched = true
-	Settings.register_protocol()
 	await get_tree().process_frame
+	Settings.register_protocol.call_deferred()      # after the first frame, never blocks startup
 	get_tree().change_scene_to_file("res://Scenes/Baseplate.tscn" if Settings.launch.has("code") else "res://Scenes/Home.tscn")
