@@ -1,0 +1,29 @@
+name: Build Windows
+on: { workflow_dispatch: {} }
+permissions: { contents: write }
+env: { GODOT_VERSION: "4.7.2" }
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot + export templates
+        run: |
+          B=https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable
+          wget -q $B/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip $B/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          unzip -q Godot_v*_linux.x86_64.zip && sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          mkdir -p ~/.local/share/godot/export_templates && unzip -q Godot_v*_export_templates.tpz && mv templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+      - name: Export Windows (release build, no DEBUG label)
+        run: |
+          cd GodotClient && godot --headless --import || true
+          mkdir -p ../Builds/Windows
+          godot --headless --export-release "Windows" ../Builds/Windows/BlockTopia.exe
+          ls -la ../Builds/Windows
+          test -s ../Builds/Windows/BlockTopia.exe
+      - name: Zip
+        run: cd Builds/Windows && zip -q ../../BlockTopia-Windows.zip BlockTopia.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: windows-zip, path: BlockTopia-Windows.zip }
+      - name: Publish to release v1.0 (replaces the old zip)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: gh release upload v1.0 BlockTopia-Windows.zip --clobber
