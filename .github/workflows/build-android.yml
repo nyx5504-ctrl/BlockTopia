@@ -1,5 +1,6 @@
 name: Build Android APK
 on: { workflow_dispatch: {} }
+permissions: { contents: write }
 env: { GODOT_VERSION: "4.7.2" }
 jobs:
   android:
@@ -40,3 +41,6 @@ jobs:
           mkdir -p ../Builds/Android && godot --headless --export-debug "Android" ../Builds/Android/BlockTopia.apk
       - uses: actions/upload-artifact@v4
         with: { name: android-apk, path: Builds/Android/BlockTopia.apk }
+      - name: Publish to release v1.0 (replaces the old APK)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: gh release upload v1.0 Builds/Android/BlockTopia.apk --clobber
