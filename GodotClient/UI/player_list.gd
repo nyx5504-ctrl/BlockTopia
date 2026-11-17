@@ -34,6 +34,10 @@ func _ready() -> void:
 	Net.mute_changed.connect(func(_i, _o): refresh())
 	if Settings.is_mobile(): panel.offset_left = -200; toggle()
 
+func _face_color(info: Dictionary) -> Color:
+	var character: Variant = info.get("character", {})
+	return Color(str(character.get("bodyColor", "#f2c744"))) if character is Dictionary else Color("f2c744")
+
 func _row_style(c: Color, r := 8) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new(); s.bg_color = c; s.set_corner_radius_all(r); s.content_margin_left = 10; s.content_margin_right = 8; s.content_margin_top = 5; s.content_margin_bottom = 5; return s
 
@@ -65,7 +69,7 @@ func refresh() -> void:
 		for st in ["normal", "disabled"]: b.add_theme_stylebox_override(st, base)
 		for st in ["hover", "pressed", "focus"]: b.add_theme_stylebox_override(st, hov if not me else base)
 		var h := HBoxContainer.new(); h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); h.offset_left = 6; h.offset_right = -10; h.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_theme_constant_override("separation", 8); b.add_child(h)
-		var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 26); h.add_child(chip)
+		var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 26, _face_color(info)); h.add_child(chip)
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; n.clip_text = true; n.mouse_filter = Control.MOUSE_FILTER_IGNORE; n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		if Net.blocked.has(id): n.modulate = Color(1, 1, 1, 0.4); n.text += " (blocked)"
 		h.add_child(n)
@@ -79,7 +83,7 @@ func _open_popup(id: int, row: Control) -> void:
 	var info: Dictionary = Net.players[id]
 	for c in popup_chip_holder.get_children():
 		if c is AvatarChip: c.queue_free()
-	var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 30); popup_chip_holder.add_child(chip); popup_chip_holder.move_child(chip, 0)
+	var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 30, _face_color(info)); popup_chip_holder.add_child(chip); popup_chip_holder.move_child(chip, 0)
 	popup_name.text = str(info.get("name", "?"))
 	popup_block.text = "Unblock" if Net.blocked.has(id) else "Block"
 	popup.reset_size()
