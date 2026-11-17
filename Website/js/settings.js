@@ -10,6 +10,9 @@ const SECTIONS = ["account", "security", "privacy", "language"];
 let stopDevices = null, devices = [];
 
 const save = patch => F.updateDoc(F.doc(db, "users", S.user.uid), patch).then(() => { Object.assign(S.profile, patch); return true; }).catch(() => { toast(t("err_generic"), "bad"); return false; });
+const characterOf = p => { const c = p?.character || {}; return { height: Math.min(1.25, Math.max(0.75, Number(c.height) || 1)), bodyType: ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic", bodyColor: safeColor(c.bodyColor || "#f2c744") }; };
+function readCharacterControls() { return { height: Number($("#characterHeight").value), bodyType: $("#characterBodyType").value, bodyColor: safeColor($("#characterBodyColor").value) }; }
+function paintCharacterPreview() { const c = readCharacterControls(); $("#characterHeightValue").textContent = Math.round(c.height * 100) + "%"; $("#characterPreview").innerHTML = avatar(S.profile?.username, S.profile?.avatarColor, "lg", c); }
 
 export function applyTheme(theme) {
   const th = theme === "light" ? "light" : "dark";
