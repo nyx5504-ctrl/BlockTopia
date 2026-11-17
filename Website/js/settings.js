@@ -152,6 +152,16 @@ export function initSettings() {
     } else status.textContent = "Couldn't save customization. Try again.";
     busy(button, false);
   };
+  $("#resetCharacter").addEventListener("click", () => {
+    $("#characterHeight").value = "1";
+    $("#characterBodyType").value = "classic";
+    for (const [name, defaults] of Object.entries(PART_DEFAULTS)) {
+      $('[data-part-size="' + name + '"]').value = "1";
+      $('[data-part-color="' + name + '"]').value = defaults.color;
+    }
+    paintCharacterPreview();
+    persistCharacter();
+  });
   $("#characterEditor").addEventListener("input", paintCharacterPreview);
   $("#characterEditor").addEventListener("change", persistCharacter);
   $("#saveCharacter").addEventListener("click", persistCharacter);
