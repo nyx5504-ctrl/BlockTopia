@@ -4,7 +4,7 @@
 
 **Tested (automated, here):** server auth/launch codes, single-use codes, two-player rooms, movement validation + corrections, respawn, chat filter/rate-limit/mute/report, room overflow, reconnect, leave, and the real Godot 4.7.2 client (headless) joining, moving, chatting and leaving. Website JS passes syntax checks.
 
-**NOT tested:** the website against live Firebase (needs your keys); Firestore rules in the emulator; real Firebase ID-token verification; any export/build (no export templates here); rendering, input, touch and gamepad on real devices; macOS/iOS/Android deep links; iOS in any form.
+**NOT tested:** the native app login/dashboard/feedback flow against live Firebase and the deployed backend; the website against live Firebase (needs your keys); Firestore rules in the emulator; real Firebase ID-token verification; any export/build (no export templates here); rendering, input, touch and gamepad on real devices; macOS/iOS/Android deep links; iOS in any form.
 
 **Limits**
 - Movement is client-reported but server-validated (speed, bounds, vertical speed, teleport correction). It is not a full server physics simulation, so subtle cheats (e.g. flying slowly) are not fully prevented.
@@ -13,8 +13,8 @@
 - Chat filter is a starter word list plus pattern checks. Extend `Backend/chat/filter.js` and expect to tune it. It cannot catch everything.
 - Email verification is sent but not required to play. Password reset is Firebase's emailed link.
 - Single Node process holds all rooms; to scale horizontally you need sticky routing or a shared room registry.
-- Android/iOS/macOS launch-by-link need the extra steps in BUILDING.md. The in-client "Join from link" box works everywhere.
+- Android/iOS/macOS launch-by-link need the extra steps in BUILDING.md. Opening the app manually shows sign-in and the game dashboard; the website can still launch a game directly with a single-use code.
 - No audio assets are included; the volume setting controls the master bus only.
-- Player-list scores are per-server live (1 per 10 s) on top of your saved total. There is no global leaderboard page any more.
+- In-game player lists show names and player actions without timed scores. There is no global leaderboard page any more.
 - Block is persisted by the server (Firestore `blocks/`) and hides that player's chat; there is no website screen to review/unblock yet (unblock from the in-game list).
 - Google sign-in is not implemented. Reports are stored in Firestore `reports` (no moderation dashboard).
