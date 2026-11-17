@@ -38,7 +38,9 @@ jobs:
       - name: Gradle build template (the blocktopia:// link comes from the addons/blocktopia_link export plugin)
         run: |
           cd GodotClient
-          godot --headless --import || true
+          set -o pipefail
+          godot --headless --import 2>&1 | tee /tmp/godot-import.log
+          if grep -Eq 'SCRIPT ERROR:|Parse Error:|ERROR: Failed to load script' /tmp/godot-import.log; then exit 1; fi
           mkdir -p android && cp -r ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip android/ && cd android && unzip -q -o android_source.zip -d build && rm android_source.zip && cd ..
           echo "${GODOT_VERSION}.stable" > android/.build_version
           touch android/build/.gdignore
