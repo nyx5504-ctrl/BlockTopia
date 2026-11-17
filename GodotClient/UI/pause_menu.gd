@@ -110,16 +110,16 @@ func _refresh_players() -> void:
 	ids.sort_custom(func(a, b): return Net.scores.get(a, 0) > Net.scores.get(b, 0) or (Net.scores.get(a, 0) == Net.scores.get(b, 0) and a < b))
 	for id in ids:
 		var info: Dictionary = Net.players[id]
-		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11) if id != Net.my_id else Color(0.13, 0.125, 0.1), Color(0.19, 0.19, 0.21) if id != Net.my_id else Color(0.35, 0.31, 0.18), 12)); players_list.add_child(card)
+		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11), Color(0.19, 0.19, 0.21), 12)); players_list.add_child(card)
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); card.add_child(v)
 		var top := HBoxContainer.new(); top.add_theme_constant_override("separation", 12); v.add_child(top)
 		top.add_child(AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 40))
 		var col := VBoxContainer.new(); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; col.add_theme_constant_override("separation", 0); top.add_child(col)
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.clip_text = true; n.add_theme_font_size_override("font_size", 20)
-		if id == Net.my_id: n.add_theme_color_override("font_color", Color("ffe27a"))
 		col.add_child(n)
 		var sub := Label.new(); sub.add_theme_font_size_override("font_size", 13); sub.modulate = Color(1, 1, 1, 0.5)
-		sub.text = "You" if id == Net.my_id else ("Blocked" if Net.blocked.has(id) else ("Muted" if Net.muted.has(id) else "Player")); col.add_child(sub)
+		sub.visible = id != Net.my_id
+		sub.text = ("Blocked" if Net.blocked.has(id) else ("Muted" if Net.muted.has(id) else "Player")); col.add_child(sub)
 		var sc := Label.new(); sc.text = str(Net.scores.get(id, 0)); sc.add_theme_font_size_override("font_size", 20); sc.modulate = Color(1, 1, 1, 0.75); top.add_child(sc)
 		if id == Net.my_id: continue
 		var row := HFlowContainer.new(); row.add_theme_constant_override("h_separation", 8); row.add_theme_constant_override("v_separation", 8); v.add_child(row)
@@ -227,7 +227,7 @@ func _help_page(parent: Node) -> void:
 	_section(p, "Controls")
 	for r in rows:
 		var h := HBoxContainer.new(); p.add_child(h)
-		var a := Label.new(); a.text = r[0]; a.size_flags_horizontal = Control.SIZE_EXPAND_FILL; a.add_theme_color_override("font_color", Color("ffe27a")); h.add_child(a)
+		var a := Label.new(); a.text = r[0]; a.size_flags_horizontal = Control.SIZE_EXPAND_FILL; a.add_theme_color_override("font_color", Color(0.9, 0.9, 0.93)); h.add_child(a)
 		var b := Label.new(); b.text = r[1]; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(b)
 	_section(p, "Tips")
 	var t := Label.new(); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -61,7 +61,7 @@ func refresh() -> void:
 	for id in ids:
 		var info: Dictionary = Net.players[id]; var me: bool = id == Net.my_id
 		var b := Button.new(); b.custom_minimum_size = Vector2(0, ROW_H); b.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.focus_mode = Control.FOCUS_NONE
-		var base := _row_style(Color(0.9, 0.78, 0.3, 0.2) if me else Color(0.04, 0.04, 0.05, 0.62), 10)
+		var base := _row_style(Color(0.04, 0.04, 0.05, 0.62), 10)
 		var hov := _row_style(Color(1, 1, 1, 0.22), 10)
 		for st in ["normal", "disabled"]: b.add_theme_stylebox_override(st, base)
 		for st in ["hover", "pressed", "focus"]: b.add_theme_stylebox_override(st, hov if not me else base)
@@ -69,7 +69,6 @@ func refresh() -> void:
 		var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 26); h.add_child(chip)
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; n.clip_text = true; n.mouse_filter = Control.MOUSE_FILTER_IGNORE; n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		if Net.blocked.has(id): n.modulate = Color(1, 1, 1, 0.4); n.text += " (blocked)"
-		if me: n.add_theme_color_override("font_color", Color("ffe27a"))
 		h.add_child(n)
 		var sc := Label.new(); sc.text = str(Net.scores.get(id, 0)); sc.modulate = Color(1, 1, 1, 0.8); sc.mouse_filter = Control.MOUSE_FILTER_IGNORE; sc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; h.add_child(sc)
 		if not me: b.pressed.connect(func(): _open_popup(id, b))

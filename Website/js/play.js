@@ -39,6 +39,9 @@ function downloadsHtml() {
   return `<div class="play-sep"><p>${esc(t("no_app"))}</p><div class="play-actions">${main}</div>${others ? `<details><summary>${esc(t("other_platforms"))}</summary>${others}</details>` : ""}</div>`;
 }
 
+// Opens the installed app through its blocktopia:// handler. No package name: if the app is missing Chrome comes back here instead of opening Google Play.
+function androidIntent(q) { return `intent://${q}#Intent;scheme=blocktopia;S.browser_fallback_url=${encodeURIComponent(location.href.split("#")[0])};end`; }
+
 function ready(link, opts) {
   clearInterval(timer);
   const p = platform(), mobile = p === "android" || p === "ios", end = Date.now() + 60000;
@@ -46,7 +49,7 @@ function ready(link, opts) {
     <p class="big">${esc(t("play_ready_title"))}</p>
     <p>${esc(t("play_ready_text"))}</p>
     <div class="play-actions" id="playMain">
-      ${p === "android" ? `<a class="btn primary play" id="openApp" href="intent://${esc(link.slice(13))}#Intent;scheme=blocktopia;package=com.blocktopia.client;end">${icon("play", "fill")} ${esc(t("open_app"))}</a>` : mobile ? "" : `<a class="btn primary play" id="openApp" href="${esc(link)}">${icon("play", "fill")} ${esc(t("open_app"))}</a>`}
+      ${p === "android" ? `<a class="btn primary play" id="openApp" href="${esc(androidIntent(link.slice(13)))}">${icon("play", "fill")} ${esc(t("open_app"))}</a>` : mobile ? "" : `<a class="btn primary play" id="openApp" href="${esc(link)}">${icon("play", "fill")} ${esc(t("open_app"))}</a>`}
       <button class="btn ${mobile ? "primary play" : ""}" data-act="copy" type="button">${icon("copy")} ${esc(t("copy_link"))}</button>
     </div>
     ${mobile ? `<p>${esc(t("mobile_steps"))}</p>` : ""}
@@ -97,7 +100,7 @@ async function start(opts, my) {
   // Android: an intent:// link opens the installed app directly (the app must be the build with the link support); if it isn't installed Chrome just stays here.
   if (platform() === "android") {
     const q = link.slice("blocktopia://".length);
-    const intent = `intent://${q}#Intent;scheme=blocktopia;package=com.blocktopia.client;end`;
+    const intent = androidIntent(q);
     $("#playBody").dataset.intent = intent;
     location.href = intent;
     return;

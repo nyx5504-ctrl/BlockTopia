@@ -109,7 +109,6 @@ func _register_actions() -> void:
 func register_protocol() -> void:
 	if OS.has_feature("editor") or protocol_launched: return      # launched by the link => the OS already points at this exe
 	var exe := OS.get_executable_path()
-	if registered_exe == exe: return
 	if OS.has_feature("windows"):
 		# Write a .reg file and import it silently. (reg.exe via OS.execute drops empty args and quotes, which broke the link.)
 		var win_exe := exe.replace("/", "\\")

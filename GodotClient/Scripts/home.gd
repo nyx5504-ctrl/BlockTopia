@@ -22,7 +22,7 @@ func _ready() -> void:
 	_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; _logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_logo.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS; _col.add_child(_logo)
 	_title = Label.new(); _title.text = "BlockTopia"; _title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _col.add_child(_title)
-	_desc = Label.new(); _desc.text = "The BlockTopia client is still being worked on.\nFor now, use the website to join games."
+	_desc = Label.new(); _desc.text = "Games start from the website.\nLog in there and press Play, and the game opens in this app."
 	_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _desc.modulate = Color(1, 1, 1, 0.68); _col.add_child(_desc)
 	var web := Button.new(); web.text = "Open the BlockTopia website"; web.custom_minimum_size = Vector2(0, 54)
 	web.pressed.connect(func(): OS.shell_open(Settings.WEBSITE_URL)); _col.add_child(web)
