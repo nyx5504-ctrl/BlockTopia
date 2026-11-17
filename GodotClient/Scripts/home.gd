@@ -96,9 +96,10 @@ func _show_auth(message := "") -> void:
 	_add_text("BlockTopia", 34)
 	_add_text("Sign in or create an account to discover and play games.", 16, true)
 	var modes := HBoxContainer.new(); modes.add_theme_constant_override("separation", 8); _col.add_child(modes)
+	var mode_group := ButtonGroup.new()
 	for mode in ["login", "signup"]:
 		var b := Button.new(); b.text = "Log in" if mode == "login" else "Sign up"; b.custom_minimum_size = Vector2(0, 46)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.button_pressed = _auth_mode == mode; b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.toggle_mode = true; b.button_group = mode_group; b.button_pressed = _auth_mode == mode; b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
 	if _auth_mode == "signup":
 		_username = _add_field("Username (3–20 letters, numbers or _)")
 	_email = _add_field("Email address"); _email.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS
@@ -109,6 +110,7 @@ func _show_auth(message := "") -> void:
 	_status = _add_text(message, 15, true); _status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 func _set_auth_mode(mode: String) -> void:
+	if _busy: return
 	_auth_mode = mode; _show_auth()
 
 func _submit_auth() -> void:
@@ -210,6 +212,7 @@ func _show_dashboard() -> void:
 	_add_text("More games are coming soon.", 15, true)
 
 func _show_details() -> void:
+	var should_load_reaction := _screen != "details"
 	_screen = "details"; _clear()
 	var header := HBoxContainer.new(); header.add_theme_constant_override("separation", 10); _col.add_child(header)
 	var heading := Label.new(); heading.text = "BlockTopia"; heading.add_theme_font_size_override("font_size", 28); heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(heading)
@@ -231,7 +234,7 @@ func _show_details() -> void:
 		_add_button("Send report", _submit_game_report, true)
 	_add_button("Play", _launch_game, true)
 	_status = _add_text("", 15, true)
-	_load_reaction()
+	if should_load_reaction: _load_reaction()
 
 func _toggle_report() -> void:
 	_report_open = not _report_open; _show_details()
@@ -276,6 +279,7 @@ func _launch_game() -> void:
 	get_tree().change_scene_to_file("res://Scenes/Baseplate.tscn")
 
 func _sign_out() -> void:
+	if _busy: return
 	_clear_native_session(); _auth_mode = "login"; _show_auth()
 
 func _clear_native_session() -> void:
