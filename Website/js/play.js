@@ -50,7 +50,7 @@ function ready(link, opts) {
     <p>${esc(t("play_ready_text"))}</p>
     <div class="play-actions" id="playMain">
       ${p === "android" ? `<a class="btn primary play" id="openApp" href="${esc(androidIntent(link.slice(13)))}">${icon("play", "fill")} ${esc(t("open_app"))}</a>` : mobile ? "" : `<a class="btn primary play" id="openApp" href="${esc(link)}">${icon("play", "fill")} ${esc(t("open_app"))}</a>`}
-      <button class="btn ${mobile ? "primary play" : ""}" data-act="copy" type="button">${icon("copy")} ${esc(t("copy_link"))}</button>
+      <button class="btn ${mobile ? "ghost" : ""}" data-act="copy" type="button">${icon("copy")} ${esc(t("copy_link"))}</button>
     </div>
     ${mobile ? `<p>${esc(t("mobile_steps"))}</p>` : ""}
     <span class="exp" id="playExp"></span>
