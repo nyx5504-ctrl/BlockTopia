@@ -183,7 +183,18 @@
                     <div style="display:flex;gap:10px"><button class="btn primary" type="submit" data-i18n="save">Save changes</button><button class="btn ghost" type="button" id="pwCancel" data-i18n="cancel">Cancel</button></div>
                   </form>
                 </div>
-                <div class="srow"><span class="lbl" data-i18n="avatar_color">Avatar color</span><div class="swatches" id="swatches" role="radiogroup"></div></div>
+                <div class="srow character-row">
+                  <div class="lbl">Character</div>
+                  <div class="character-editor" id="characterEditor">
+                    <div class="character-preview" id="characterPreview" aria-label="Character preview"></div>
+                    <div class="character-fields">
+                      <label class="character-field"><span>Height <b id="characterHeightValue">100%</b></span><input id="characterHeight" type="range" min="0.75" max="1.25" step="0.05"></label>
+                      <label class="character-field"><span>Body type</span><select class="input" id="characterBodyType"><option value="classic">Classic</option><option value="slim">Slim</option><option value="broad">Broad</option></select></label>
+                      <label class="character-field"><span>Body color</span><input id="characterBodyColor" type="color" value="#f2c744"></label>
+                    </div>
+                  </div>
+                </div>
+                <div class="srow"><span class="lbl" data-i18n="avatar_color">Outfit color</span><div class="swatches" id="swatches" role="radiogroup"></div></div>
                 <div class="srow"><span class="lbl" data-i18n="theme_title">Background</span></div>
                 <div class="themes" role="radiogroup">
                   <button type="button" class="theme" role="radio" data-theme-pick="dark"><span class="pv d"><i></i><u><i></i><i></i></u></span><b data-i18n="theme_dark">Black</b></button>
