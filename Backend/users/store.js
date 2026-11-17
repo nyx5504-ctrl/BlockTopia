@@ -34,6 +34,11 @@ export async function createProfile(uid, username) {
   });
   return await getUser(uid);
 }
+export async function getGameReaction(uid, game) {
+  if (!db) return mem.gameReactions.get(`${game}:${uid}`) || "";
+  const snap = await db.doc(`games/${game}/reactions/${uid}`).get();
+  return snap.exists ? String(snap.data().reaction || "") : "";
+}
 export async function toggleGameReaction(uid, game, reaction) {
   const key = \`\${game}:\${uid}\`;
   if (!db) {
