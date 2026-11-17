@@ -4,6 +4,7 @@ extends Control
 ## clipboard the moment the app opens (or you can paste it / press "Join from clipboard").
 var status: Label
 var link_in: LineEdit
+var link_status: Label
 var _last_clip := ""
 var _scroll: ScrollContainer
 var _center: CenterContainer
@@ -26,6 +27,10 @@ func _ready() -> void:
 	_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _desc.modulate = Color(1, 1, 1, 0.68); _col.add_child(_desc)
 	var web := Button.new(); web.text = "Open the BlockTopia website"; web.custom_minimum_size = Vector2(0, 54)
 	web.pressed.connect(func(): OS.shell_open(Settings.WEBSITE_URL)); _col.add_child(web)
+	if OS.has_feature("windows") and not OS.has_feature("editor"):
+		link_status = Label.new(); link_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; link_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; link_status.add_theme_font_size_override("font_size", 15); _col.add_child(link_status)
+		var fix := Button.new(); fix.text = "Repair website link"; fix.custom_minimum_size = Vector2(0, 46); fix.pressed.connect(func(): Settings.registered_exe = ""; Settings.register_protocol(true); _update_link_status()); _col.add_child(fix)
+		get_tree().create_timer(2.0).timeout.connect(_update_link_status)
 	if true:                                              # every platform: backup way in if the Play button can't open the app
 		var sep := HSeparator.new(); sep.modulate = Color(1, 1, 1, 0.25); _col.add_child(sep)
 		var h := Label.new(); h.text = "Pressed Play on the website? Your game starts by itself. If it doesn't: press Copy link on the website, come back here and press the button below."
@@ -72,3 +77,9 @@ func _try_clipboard(manual := false) -> void:
 func _from_link() -> void:
 	if Settings.parse_link(link_in.text.strip_edges()): get_tree().change_scene_to_file("res://Scenes/Baseplate.tscn")
 	else: status.text = "That doesn't look like a valid, current BlockTopia link. Press Play on the website again and copy the new one."
+
+func _update_link_status() -> void:
+	if link_status == null: return
+	var st := Settings.protocol_status()
+	link_status.text = {"ok": "Website link: working. Press Play on the website and this app opens.", "points elsewhere": "Website link: points to another copy of the app. Press Repair website link.", "not registered": "Website link: not set up. Press Repair website link."}.get(st, "")
+	link_status.modulate = Color(0.55, 0.9, 0.6) if st == "ok" else Color(1, 0.7, 0.45)

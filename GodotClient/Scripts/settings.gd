@@ -105,8 +105,17 @@ func _register_actions() -> void:
 	_add("look_up", [_ev_axis(JOY_AXIS_RIGHT_Y, -1.0)])
 	_add("look_down", [_ev_axis(JOY_AXIS_RIGHT_Y, 1.0)])
 
+## Windows: asks the registry what blocktopia:// opens. "ok" = this exe, "points elsewhere" = another/old copy, "not registered", "" = not Windows.
+func protocol_status() -> String:
+	if not OS.has_feature("windows") or OS.has_feature("editor"): return ""
+	var out := []
+	var code := OS.execute("reg", ["query", "HKCU\\Software\\Classes\\blocktopia\\shell\\open\\command", "/ve"], out, true)
+	if code != 0: return "not registered"
+	var exe := OS.get_executable_path().replace("/", "\\").to_lower()
+	return "ok" if "".join(out).to_lower().contains(exe) else "points elsewhere"
+
 ## Registers blocktopia:// with the OS for the installed (non-editor) desktop client.
-func register_protocol() -> void:
+func register_protocol(wait := false) -> void:
 	if OS.has_feature("editor") or protocol_launched: return      # launched by the link => the OS already points at this exe
 	var exe := OS.get_executable_path()
 	if OS.has_feature("windows"):
@@ -119,7 +128,8 @@ func register_protocol() -> void:
 		var cmd := q + win_exe.replace("\\", "\\\\") + q + " " + q + "%1" + q
 		f.store_string("Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Classes\\blocktopia]\r\n@=\"URL:BlockTopia Protocol\"\r\n\"URL Protocol\"=\"\"\r\n\r\n[HKEY_CURRENT_USER\\Software\\Classes\\blocktopia\\shell\\open\\command]\r\n@=\"" + cmd.replace("\"", "\\\"") + "\"\r\n")
 		f.close()
-		OS.create_process("regedit", ["/s", reg_path.replace("/", "\\")])
+		if wait: OS.execute("regedit", ["/s", reg_path.replace("/", "\\")])
+		else: OS.create_process("regedit", ["/s", reg_path.replace("/", "\\")])
 	elif OS.has_feature("linux"):
 		var dir := OS.get_environment("HOME") + "/.local/share/applications"
 		DirAccess.make_dir_recursive_absolute(dir)
