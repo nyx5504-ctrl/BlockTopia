@@ -37,7 +37,12 @@ function startDevices() {
 
 export function renderAccount() {
   const p = S.profile || {}, u = auth.currentUser; if (!u) return;
-  $("#setAv").outerHTML = avatar(p.username, p.avatarColor, "lg").replace("<span", '<span id="setAv"');
+  const character = characterOf(p);
+  $("#setAv").outerHTML = avatar(p.username, p.avatarColor, "lg", character).replace("<span", '<span id="setAv"');
+  $("#characterHeight").value = String(character.height);
+  $("#characterBodyType").value = character.bodyType;
+  $("#characterBodyColor").value = character.bodyColor;
+  paintCharacterPreview();
   $("#setName").textContent = p.username || "";
   $("#setUser").textContent = p.username || "";
   $("#setEmail").textContent = u.email || "";
