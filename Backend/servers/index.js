@@ -11,7 +11,7 @@ import { flushStats } from "../leaderboards/stats.js";
 const PORT = +process.env.PORT || 8787;
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:8000").split(",").map(s => s.trim());
 const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
-const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map();
+const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
 const tooMany = (map, key, max, ms) => { const now = Date.now(), a = (map.get(key) || []).filter(t => now - t < ms); a.push(now); map.set(key, a); return a.length > max; };
@@ -54,6 +54,7 @@ const server = http.createServer(async (req, res) => {
       const { game, action } = body;
       if (game !== "baseplate") return out(400, { error: "unknown game" });
       if (tooMany(feedbackHits, u.uid, 20, 60000)) return out(429, { error: "Please wait before sending more game feedback." });
+      if (action === "report" && tooMany(gameReportHits, u.uid, 3, 60000)) return out(429, { error: "Please wait before sending another game report." });
       if (action === "get-reaction") {
         const reaction = await store.getGameReaction(u.uid, game);
         return out(200, { reaction });
@@ -67,7 +68,8 @@ const server = http.createServer(async (req, res) => {
         const profile = await store.getUser(u.uid);
         const details = String(body.details || "").trim().slice(0, 500);
         if (!details) return out(400, { error: "Add a short reason for the report." });
-        await store.saveReport({ type: "game", game, reporterUid: u.uid, reporterName: profile.username || u.name || "Player", reason: String(body.reason || "other").slice(0, 40), details });
+        const reason = ["inappropriate_content", "abuse", "spam", "other"].includes(body.reason) ? body.reason : "other";
+        await store.saveReport({ type: "game", game, reporterUid: u.uid, reporterName: profile.username || u.name || "Player", reason, details });
         return out(200, { ok: true });
       }
       return out(400, { error: "unknown action" });
