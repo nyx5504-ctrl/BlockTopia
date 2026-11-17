@@ -9,16 +9,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: 17 }
-      - name: Android SDK (use the runner's preinstalled SDK, add what Godot needs)
+      - name: Android SDK
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          ls "$ANDROID_HOME" || true
           yes | "$SDKM" --licenses > /dev/null || true
-          for p in "platform-tools" "build-tools;35.0.1" "build-tools;36.0.0" "platforms;android-35" "platforms;android-36"; do
-            "$SDKM" "$p" || true
-          done
-          "$SDKM" --list_installed || true
-      - name: Install Godot + templates, create debug keystore, export APK
+          for p in "platform-tools" "build-tools;35.0.1" "build-tools;36.0.0" "platforms;android-35" "platforms;android-36"; do "$SDKM" "$p" || true; done
+      - name: Install Godot + templates
         run: |
           B=https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable
           wget -q $B/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip $B/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
@@ -37,13 +33,28 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOT
           done
+      - name: Gradle build template (the blocktopia:// link comes from the addons/blocktopia_link export plugin)
+        run: |
           cd GodotClient
           set -o pipefail
           godot --headless --import 2>&1 | tee /tmp/godot-import.log
           if grep -Eq 'SCRIPT ERROR:|Parse Error:|ERROR: Failed to load script' /tmp/godot-import.log; then exit 1; fi
-          mkdir -p ../Builds/Android && godot --headless --export-debug "Android" ../Builds/Android/BlockTopia.apk
+          mkdir -p android && cp -r ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip android/ && cd android && unzip -q -o android_source.zip -d build && rm android_source.zip && cd ..
+          echo "${GODOT_VERSION}.stable" > android/.build_version
+          touch android/build/.gdignore
+          sed -i 's/gradle_build\/use_gradle_build=false/gradle_build\/use_gradle_build=true/' export_presets.cfg
+          grep -n "use_gradle_build" export_presets.cfg
+      - name: Export APK
+        run: |
+          cd GodotClient && mkdir -p ../Builds/Android && godot --headless --export-debug "Android" ../Builds/Android/BlockTopia.apk
+      - name: Check the APK really contains the blocktopia:// link
+        run: |
+          AAPT2=$(ls -d $ANDROID_HOME/build-tools/*/aapt2 | tail -1)
+          $AAPT2 dump xmltree --file AndroidManifest.xml Builds/Android/BlockTopia.apk > manifest.txt
+          grep -n "scheme\|MAIN\|VIEW\|package=" manifest.txt | head -20
+          grep -E "scheme.*=\"blocktopia\"" manifest.txt >/dev/null || { echo "::error::The APK has no blocktopia:// intent filter"; cat manifest.txt | head -80; exit 1; }
       - uses: actions/upload-artifact@v4
         with: { name: android-apk, path: Builds/Android/BlockTopia.apk }
-      - name: Publish to release v1.0 (replaces the old APK)
+      - name: Publish to release v1.0
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-        run: gh release upload v1.0 Builds/Android/BlockTopia.apk --clobber
+        run: gh release upload v1.0 Builds/Android/BlockTopia.apk --clobber --clobber
