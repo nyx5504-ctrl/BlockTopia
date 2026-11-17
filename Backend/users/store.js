@@ -10,11 +10,48 @@ try {
 if (!db && process.env.DEV_AUTH !== "1") { console.error("No Firebase credentials. Set FIREBASE_SERVICE_ACCOUNT (or DEV_AUTH=1 for local tests)."); process.exit(1); }
 if (!db) console.warn("[dev] running without Firestore: data is kept in memory only");
 
-export const mem = { users: new Map(), friends: new Set(), stats: new Map(), reports: [], presence: new Map(), blocks: new Map(), requests: new Map() };
+export const mem = { users: new Map(), friends: new Set(), stats: new Map(), reports: [], presence: new Map(), blocks: new Map(), requests: new Map(), gameReactions: new Map() };
 const TS = () => admin.firestore.FieldValue.serverTimestamp();
 const INC = n => admin.firestore.FieldValue.increment(n);
 
 export async function getUser(uid) { if (!db) return mem.users.get(uid) || {}; const s = await db.doc(`users/${uid}`).get(); return s.exists ? s.data() : {}; }
+export async function createProfile(uid, username) {
+  const usernameLower = username.toLowerCase();
+  if (!db) {
+    for (const [otherUid, user] of mem.users) if (otherUid !== uid && user.usernameLower === usernameLower) throw new Error("USERNAME_TAKEN");
+    const old = mem.users.get(uid) || {};
+    if (old.username) return old;
+    const profile = { username, usernameLower, avatarColor: "#f4f4f2", allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: new Date().toISOString() };
+    mem.users.set(uid, profile); return profile;
+  }
+  const userRef = db.doc(\`users/\${uid}\`), nameRef = db.doc(\`usernames/\${usernameLower}\`);
+  await db.runTransaction(async tx => {
+    const [userSnap, nameSnap] = await Promise.all([tx.get(userRef), tx.get(nameRef)]);
+    if (userSnap.exists && userSnap.data().username) return;
+    if (nameSnap.exists && nameSnap.data().uid !== uid) throw new Error("USERNAME_TAKEN");
+    if (!nameSnap.exists) tx.create(nameRef, { uid });
+    tx.set(userRef, { username, usernameLower, avatarColor: "#f4f4f2", allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: TS() }, { merge: true });
+  });
+  return await getUser(uid);
+}
+export async function toggleGameReaction(uid, game, reaction) {
+  const key = \`\${game}:\${uid}\`;
+  if (!db) {
+    const old = mem.gameReactions.get(key) || "";
+    const next = old === reaction ? "" : reaction;
+    if (next) mem.gameReactions.set(key, next); else mem.gameReactions.delete(key);
+    return next;
+  }
+  const ref = db.doc(\`games/\${game}/reactions/\${uid}\`);
+  let next = reaction;
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (snap.exists && snap.data().reaction === reaction) { tx.delete(ref); next = ""; }
+    else tx.set(ref, { uid, reaction, updatedAt: TS() });
+  });
+  return next;
+}
+
 export async function isFriend(a, b) { if (!db) return mem.friends.has(`${a}|${b}`); return (await db.doc(`friends/${a}/list/${b}`).get()).exists; }
 export async function setPresence(uid, d) {
   if (!db) return void mem.presence.set(uid, d);
