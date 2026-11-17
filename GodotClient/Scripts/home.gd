@@ -459,6 +459,7 @@ func _add_character_customizer(parent: Node) -> void:
 		_character_part_sizes[part] = slider; _character_part_colors[part] = picker
 		slider.value_changed.connect(func(v): part_size_text.text = "%d%%" % roundi(v * 100.0); _preview_character())
 		picker.color_changed.connect(func(_c): _preview_character())
+	var reset := Button.new(); reset.text = "Reset to defaults"; reset.custom_minimum_size = Vector2(0, 46); reset.pressed.connect(_reset_character_controls); body.add_child(reset)
 	var save := Button.new(); save.text = "Save customization"; save.custom_minimum_size = Vector2(0, 50); save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.2, 0.42, 0.82), Color(0.27, 0.5, 0.92), 10))
 	save.pressed.connect(_save_character); body.add_child(save)
@@ -476,6 +477,16 @@ func _preview_character() -> void:
 	var c := _read_character_controls()
 	_character_height_text.text = "Height: %d%%" % roundi(float(c.height) * 100.0)
 	_character_preview.apply_character(c)
+
+func _reset_character_controls() -> void:
+	_character_height.value = 1.0
+	_character_type.select(0)
+	var default_colors := {"head": "#f2c744", "torso": "#2f6fd6", "leftArm": "#f2c744", "rightArm": "#f2c744", "leftLeg": "#3f9a52", "rightLeg": "#3f9a52"}
+	for part in default_colors:
+		_character_part_sizes[part].value = 1.0
+		_character_part_colors[part].color = Color(str(default_colors[part]))
+	_preview_character()
+	if _character_status != null: _character_status.text = "Default character restored. Save to apply."
 
 func _save_character() -> void:
 	if _busy: return
