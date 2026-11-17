@@ -9,18 +9,31 @@ var px := 32
 
 ## The classic smiley face, also used on the 3D character's head. Transparent background.
 static func face_image(n := 128) -> Image:
+	# Black ink only, with transparent pixels everywhere else. Shape follows the supplied face sketch.
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
-	var dark := Color(0.1, 0.1, 0.12, 1.0)
+	var black := Color(0, 0, 0, 1)
+	var curve := PackedVector2Array([Vector2(0.24, 0.69), Vector2(0.40, 1.02), Vector2(0.60, 1.02), Vector2(0.76, 0.69)])
+	var curve_points := PackedVector2Array()
+	for i in 49:
+		var t := float(i) / 48.0; var q := 1.0 - t
+		curve_points.append(curve[0] * q * q * q + curve[1] * 3.0 * q * q * t + curve[2] * 3.0 * q * t * t + curve[3] * t * t * t)
 	for y in n:
 		for x in n:
-			var u := (x + 0.5) / n; var v := (y + 0.5) / n; var a := 0.0
-			for ex in [0.32, 0.68]:                                     # eyes: two tall ovals
-				var d := Vector2((u - ex) / 0.06, (v - 0.40) / 0.11).length()
-				a = maxf(a, clampf((1.0 - d) * 6.0 + 0.5, 0.0, 1.0))
-			var dm := Vector2(u - 0.5, v - 0.50)                          # smile: lower arc of a circle
-			var ring := absf(dm.length() - 0.27)
-			if dm.y > 0.06 and dm.y < 0.3: a = maxf(a, clampf((0.035 - ring) * 60.0 + 0.5, 0.0, 1.0))
-			img.set_pixel(x, y, Color(dark.r, dark.g, dark.b, a))
+			var p := Vector2((x + 0.5) / n, (y + 0.5) / n)
+			var alpha := 0.0
+			var left := p - Vector2(0.28, 0.28)
+			var angle := -0.45
+			var rotated := Vector2(left.x * cos(angle) + left.y * sin(angle), -left.x * sin(angle) + left.y * cos(angle))
+			var left_d := Vector2(rotated.x / 0.145, rotated.y / 0.25).length()
+			alpha = maxf(alpha, clampf((1.0 - left_d) * n * 0.55 + 0.5, 0.0, 1.0))
+			var right := p - Vector2(0.76, 0.28)
+			var right_d := Vector2(right.x / 0.12, right.y / 0.235).length()
+			alpha = maxf(alpha, clampf((1.0 - right_d) * n * 0.55 + 0.5, 0.0, 1.0))
+			var smile_d := INF
+			for q in curve_points:
+				smile_d = minf(smile_d, p.distance_to(q))
+			alpha = maxf(alpha, clampf((0.022 - smile_d) * n * 0.8 + 0.5, 0.0, 1.0))
+			img.set_pixel(x, y, Color(black.r, black.g, black.b, alpha))
 	return img
 
 static func face_texture() -> ImageTexture:
