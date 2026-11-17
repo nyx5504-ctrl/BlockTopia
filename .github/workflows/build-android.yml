@@ -57,4 +57,4 @@ jobs:
         with: { name: android-apk, path: Builds/Android/BlockTopia.apk }
       - name: Publish to release v1.0
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-        run: gh release upload v1.0 Builds/Android/BlockTopia.apk --clobber --clobber
+        run: gh release upload v1.0 Builds/Android/BlockTopia.apk --clobber
