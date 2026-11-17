@@ -31,7 +31,7 @@ func _ready() -> void:
 	rows = VBoxContainer.new(); rows.add_theme_constant_override("separation", 3); v.add_child(rows)
 	_build_popup(root)
 	Net.welcomed.connect(func(_m): refresh()); Net.player_joined.connect(func(_p): refresh()); Net.player_left.connect(func(_i, _n): refresh())
-Net.mute_changed.connect(func(_i, _o): refresh())
+	Net.mute_changed.connect(func(_i, _o): refresh())
 	if Settings.is_mobile(): panel.offset_left = -200; toggle()
 
 func _row_style(c: Color, r := 8) -> StyleBoxFlat:
