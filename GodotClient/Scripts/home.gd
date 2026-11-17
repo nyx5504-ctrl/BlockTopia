@@ -9,6 +9,14 @@ var _http: HTTPRequest
 var _scroll: ScrollContainer
 var _center: CenterContainer
 var _col: VBoxContainer
+var _side: PanelContainer
+var _side_user: Label
+var _side_chip: AvatarChip
+var _side_buttons := {}
+var _content_tabs: Control
+var _top_logout: Button
+var _auth_shell: PanelContainer
+var _auth_shell_margin: MarginContainer
 var _status: Label
 var _email: LineEdit
 var _password: LineEdit
@@ -28,7 +36,8 @@ var _character_preview: Avatar
 var _character_height: HSlider
 var _character_height_text: Label
 var _character_type: OptionButton
-var _character_color: ColorPickerButton
+var _character_part_sizes := {}
+var _character_part_colors := {}
 var _character_status: Label
 
 func _ready() -> void:
@@ -37,6 +46,7 @@ func _ready() -> void:
 	_scroll = ScrollContainer.new(); _scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; add_child(_scroll)
 	_center = CenterContainer.new(); _center.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _scroll.add_child(_center)
 	_col = VBoxContainer.new(); _col.add_theme_constant_override("separation", 14); _center.add_child(_col)
+	_build_sidebar()
 	_http = HTTPRequest.new(); _http.timeout = 20.0; add_child(_http)
 	get_viewport().size_changed.connect(_fit); _fit()
 	_id_token = Settings.native_id_token
@@ -58,19 +68,72 @@ func _ready() -> void:
 func _fit() -> void:
 	if _col == null: return
 	var vs := get_viewport().get_visible_rect().size
-	_col.custom_minimum_size = Vector2(clampf(vs.x - 32.0, 280.0, 720.0), 0)
+	var auth_screen := _screen in ["auth", "profile"]
+	var desktop_nav := vs.x >= 900.0 and not auth_screen and _screen != "loading"
+	if _side != null: _side.visible = desktop_nav
+	if _content_tabs != null: _content_tabs.visible = not desktop_nav
+	if _top_logout != null: _top_logout.visible = not desktop_nav
+	_scroll.offset_left = 244.0 if desktop_nav else 0.0
+	_scroll.offset_right = 0.0
+	var available := vs.x - (276.0 if desktop_nav else (76.0 if auth_screen else 32.0))
+	var max_width := 480.0 if auth_screen else (520.0 if _screen == "loading" else 1120.0)
+	_col.custom_minimum_size = Vector2(clampf(available, 180.0, max_width), 0)
 	_center.custom_minimum_size = Vector2(0, maxf(vs.y - 16.0, 0.0))
+	_sync_navigation()
+
+func _build_sidebar() -> void:
+	_side = PanelContainer.new(); _side.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE); _side.offset_right = 236.0
+	_side.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.075, 0.075, 0.085), Color(0.18, 0.18, 0.2), 0))
+	add_child(_side)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 16)
+	_side.add_child(margin)
+	var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 10); margin.add_child(stack)
+	var brand := HBoxContainer.new(); brand.add_theme_constant_override("separation", 10); stack.add_child(brand)
+	var mark := TextureRect.new(); mark.texture = load("res://Assets/logo.png"); mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; mark.custom_minimum_size = Vector2(36, 36); brand.add_child(mark)
+	var name := Label.new(); name.text = "BlockTopia"; name.add_theme_font_size_override("font_size", 21); name.size_flags_vertical = Control.SIZE_SHRINK_CENTER; brand.add_child(name)
+	var group := ButtonGroup.new()
+	for item in ["Dashboard", "Customization"]:
+		var button := Button.new(); button.text = item; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.custom_minimum_size = Vector2(0, 46); button.toggle_mode = true; button.button_group = group
+		button.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.075, 0.075, 0.085), Color(0.075, 0.075, 0.085), 10))
+		button.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.13, 0.13, 0.15), Color(0.13, 0.13, 0.15), 10))
+		button.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10))
+		button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+		if item == "Dashboard": button.pressed.connect(_show_dashboard)
+		else: button.pressed.connect(_show_customization)
+		stack.add_child(button); _side_buttons[item] = button
+	var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; stack.add_child(spacer)
+	_side_chip = AvatarChip.new().setup("Player", Color("#f4f4f2"), 36, Color("#f2c744")); stack.add_child(_side_chip)
+	_side_user = Label.new(); _side_user.text = ""; _side_user.clip_text = true; stack.add_child(_side_user)
+	var out := Button.new(); out.text = "Sign out"; out.custom_minimum_size = Vector2(0, 44); out.pressed.connect(_sign_out); stack.add_child(out)
+	_sync_navigation()
+
+func _sync_navigation() -> void:
+	if _side == null: return
+	var is_desktop := _side.visible
+	for name in _side_buttons: _side_buttons[name].button_pressed = (name == "Customization" and _screen == "customization") or (name == "Dashboard" and _screen in ["dashboard", "details"])
+	if _side_chip != null:
+		var character := _character_data() if _profile.has("character") else {"bodyColor": "#f2c744"}
+		var display := str(_profile.get("username", "Player"))
+		_side_chip.setup(display, Color(str(_profile.get("avatarColor", "#f4f4f2"))), 36, Color(str(character.get("bodyColor", "#f2c744"))))
+		_side_chip.queue_redraw()
+		_side_user.text = display
+		_side_chip.visible = is_desktop and _profile.has("username")
+		_side_user.visible = is_desktop and _profile.has("username")
 
 func _clear() -> void:
+	_content_tabs = null; _top_logout = null
 	for node in _col.get_children():
 		_col.remove_child(node); node.queue_free()
 	_status = null; _email = null; _password = null; _username = null; _report_edit = null; _report_reason = null
-	_character_preview = null; _character_height = null; _character_height_text = null; _character_type = null; _character_color = null; _character_status = null
+	_character_preview = null; _character_height = null; _character_height_text = null; _character_type = null; _character_part_sizes.clear(); _character_part_colors.clear(); _character_status = null
 
 func _set_status_screen(message: String) -> void:
+	_hide_auth_shell()
 	_screen = "loading"; _clear()
 	_add_text("BlockTopia", 34, false)
 	_add_text(message, 18, true)
+	_fit()
 
 func _add_text(value: String, font_size := 18, muted := false) -> Label:
 	var l := Label.new(); l.text = value; l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -92,14 +155,24 @@ func _add_button(label: String, callback: Callable, primary := false) -> Button:
 	b.pressed.connect(callback); _col.add_child(b); return b
 
 func _add_tabs(detail := false) -> void:
-	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); _col.add_child(row)
-	var discover := Button.new(); discover.text = "Dashboard"; discover.custom_minimum_size = Vector2(0, 44); discover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); row.visible = get_viewport().get_visible_rect().size.x < 900.0; _col.add_child(row); _content_tabs = row
+	var group := ButtonGroup.new()
+	var tab_style := ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10)
+	var tab_on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10)
+	var discover := Button.new(); discover.text = "Dashboard"; discover.toggle_mode = true; discover.button_group = group; discover.custom_minimum_size = Vector2(0, 44); discover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	discover.add_theme_stylebox_override("normal", tab_style); discover.add_theme_stylebox_override("hover", tab_style); discover.add_theme_stylebox_override("pressed", tab_on); discover.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+	discover.button_pressed = _screen in ["dashboard", "details"]
 	discover.pressed.connect(_show_dashboard); row.add_child(discover)
+	var customize := Button.new(); customize.text = "Customization"; customize.toggle_mode = true; customize.button_group = group; customize.custom_minimum_size = Vector2(0, 44); customize.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	customize.add_theme_stylebox_override("normal", tab_style); customize.add_theme_stylebox_override("hover", tab_style); customize.add_theme_stylebox_override("pressed", tab_on); customize.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+	customize.button_pressed = _screen == "customization"
+	customize.pressed.connect(_show_customization); row.add_child(customize)
 	if detail:
-		var game := Button.new(); game.text = "Baseplate"; game.disabled = true; game.custom_minimum_size = Vector2(0, 44); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(game)
+		var game := Button.new(); game.text = "Baseplate"; game.disabled = true; game.toggle_mode = true; game.button_group = group; game.custom_minimum_size = Vector2(0, 44); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		game.add_theme_stylebox_override("normal", tab_style); game.add_theme_stylebox_override("pressed", tab_on); row.add_child(game)
 
 func _show_auth(message := "") -> void:
-	_screen = "auth"; _clear()
+	_screen = "auth"; _show_auth_shell(); _clear()
 	var logo := TextureRect.new(); logo.texture = load("res://Assets/logo.png"); logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(96, 96); logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; _col.add_child(logo)
 	_add_text("BlockTopia", 34)
@@ -117,6 +190,7 @@ func _show_auth(message := "") -> void:
 	if _auth_mode == "login":
 		_add_button("Forgot password?", _send_password_reset)
 	_status = _add_text(message, 15, true); _status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fit()
 
 func _set_auth_mode(mode: String) -> void:
 	if _busy: return
@@ -182,12 +256,13 @@ func _send_password_reset() -> void:
 	_status.text = "Check your inbox for a password reset link." if result.ok else _auth_error(result.data)
 
 func _show_profile_setup(message := "") -> void:
-	_screen = "profile"; _clear()
+	_screen = "profile"; _show_auth_shell(); _clear()
 	_add_text("Choose your username", 30)
 	_add_text("This name appears to other players in BlockTopia.", 16, true)
 	_username = _add_field("Username (3–20 letters, numbers or _)")
 	_add_button("Save username", _save_profile, true)
 	_status = _add_text(message, 15, true)
+	_fit()
 
 func _save_profile() -> void:
 	if _busy: return
@@ -201,11 +276,37 @@ func _save_profile() -> void:
 		_status.text = result.error if result.error != "" else "Couldn't save that username. Try another."; return
 	_profile = result.data.get("profile", {}); Settings.native_profile = _profile.duplicate(true); _show_dashboard()
 
-func _show_dashboard() -> void:
-	_screen = "dashboard"; _clear()
+func _show_auth_shell() -> void:
+	if _auth_shell != null and is_instance_valid(_auth_shell): return
+	if _col.get_parent() == _center: _center.remove_child(_col)
+	_auth_shell = PanelContainer.new()
+	_auth_shell.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.09, 0.09, 0.105), Color(0.22, 0.22, 0.25), 16))
+	_center.add_child(_auth_shell)
+	_auth_shell_margin = MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: _auth_shell_margin.add_theme_constant_override("margin_" + side, 22)
+	_auth_shell.add_child(_auth_shell_margin); _auth_shell_margin.add_child(_col)
+
+func _hide_auth_shell() -> void:
+	if _auth_shell == null or not is_instance_valid(_auth_shell): return
+	if _col.get_parent() == _auth_shell_margin: _auth_shell_margin.remove_child(_col)
+	_center.remove_child(_auth_shell); _auth_shell.queue_free(); _auth_shell = null; _auth_shell_margin = null
+	_center.add_child(_col)
+
+func _add_app_header() -> void:
 	var header := HBoxContainer.new(); header.add_theme_constant_override("separation", 10); _col.add_child(header)
-	var heading := Label.new(); heading.text = "BlockTopia"; heading.add_theme_font_size_override("font_size", 30); heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(heading)
-	var logout := Button.new(); logout.text = "Sign out"; logout.custom_minimum_size = Vector2(110, 44); logout.pressed.connect(_sign_out); header.add_child(logout)
+	var logo := TextureRect.new(); logo.texture = load("res://Assets/logo.png"); logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(38, 38); logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER; header.add_child(logo)
+	var heading := Label.new(); heading.text = "BlockTopia"; heading.add_theme_font_size_override("font_size", 27); heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(heading)
+	if _profile.has("username"):
+		var chip := AvatarChip.new().setup(str(_profile.username), Color(str(_profile.get("avatarColor", "#f4f4f2"))), 34, Color(str(_character_data().bodyColor)))
+		header.add_child(chip)
+		var user := Label.new(); user.text = str(_profile.username); user.clip_text = true; user.custom_minimum_size = Vector2(45, 0); user.add_theme_color_override("font_color", Color(1, 1, 1, 0.75)); header.add_child(user)
+	_top_logout = Button.new(); _top_logout.text = "Sign out"; _top_logout.custom_minimum_size = Vector2(100, 44); _top_logout.pressed.connect(_sign_out); header.add_child(_top_logout)
+
+func _show_dashboard() -> void:
+	_hide_auth_shell()
+	_screen = "dashboard"; _clear()
+	_add_app_header()
 	_add_tabs(false)
 	_add_text("Welcome, %s" % str(_profile.get("username", "player")), 23)
 	_add_text("Discover", 28)
@@ -220,15 +321,36 @@ func _show_dashboard() -> void:
 	var by := Label.new(); by.text = "By BlockTopia"; by.modulate = Color(1, 1, 1, 0.62); info.add_child(by)
 	var desc := Label.new(); desc.text = "Explore a sunny world, meet other players, chat and play together."; desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(desc)
 	var open := Button.new(); open.text = "View game"; open.custom_minimum_size = Vector2(0, 50); open.pressed.connect(_show_details); info.add_child(open)
-	_add_character_customizer()
+	var custom_card := PanelContainer.new(); custom_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	custom_card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(custom_card)
+	var custom_row := HBoxContainer.new(); custom_row.add_theme_constant_override("separation", 12); custom_card.add_child(custom_row)
+	var custom_intro := VBoxContainer.new(); custom_intro.size_flags_horizontal = Control.SIZE_EXPAND_FILL; custom_row.add_child(custom_intro)
+	var custom_title := Label.new(); custom_title.text = "Make your character yours"; custom_title.add_theme_font_size_override("font_size", 20); custom_intro.add_child(custom_title)
+	var custom_note := Label.new(); custom_note.text = "Set your height, body type, and each part's size and color."; custom_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; custom_note.modulate = Color(1, 1, 1, 0.65); custom_intro.add_child(custom_note)
+	var custom_open := Button.new(); custom_open.text = "Customize"; custom_open.custom_minimum_size = Vector2(130, 48); custom_open.pressed.connect(_show_customization); custom_row.add_child(custom_open)
 	_add_text("More games are coming soon.", 15, true)
+	_fit()
 
 func _character_data() -> Dictionary:
 	var value: Variant = _profile.get("character", {})
 	var c: Dictionary = value if value is Dictionary else {}
 	var body_type := str(c.get("bodyType", "classic"))
 	if not body_type in ["classic", "slim", "broad"]: body_type = "classic"
-	return {"height": clampf(float(c.get("height", 1.0)), 0.75, 1.25), "bodyType": body_type, "bodyColor": str(c.get("bodyColor", "#f2c744"))}
+	var legacy_skin := str(c.get("bodyColor", "#f2c744"))
+	var stored: Variant = c.get("parts", {})
+	var parts: Dictionary = stored.duplicate(true) if stored is Dictionary else {}
+	var defaults := {
+		"head": {"size": 1.0, "color": legacy_skin}, "torso": {"size": 1.0, "color": "#2f6fd6"},
+		"leftArm": {"size": 1.0, "color": legacy_skin}, "rightArm": {"size": 1.0, "color": legacy_skin},
+		"leftLeg": {"size": 1.0, "color": "#3f9a52"}, "rightLeg": {"size": 1.0, "color": "#3f9a52"}
+	}
+	for part in defaults:
+		var v: Variant = parts.get(part, {})
+		var obj: Dictionary = v if v is Dictionary else {}
+		defaults[part].size = clampf(float(obj.get("size", 1.0)), 0.7, 1.3)
+		var color := str(obj.get("color", defaults[part].color))
+		defaults[part].color = color if color.begins_with("#") and color.length() == 7 else defaults[part].color
+	return {"height": clampf(float(c.get("height", 1.0)), 0.75, 1.25), "bodyType": body_type, "bodyColor": defaults["head"]["color"], "parts": defaults}
 
 func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0, 210)) -> Avatar:
 	var holder := SubViewportContainer.new(); holder.stretch = true; holder.custom_minimum_size = size
@@ -240,36 +362,48 @@ func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0
 	var preview := Avatar.new(); preview.setup(str(_profile.get("username", "Player")), Color(str(_profile.get("avatarColor", "#2f6fd6"))), character, false); view.add_child(preview)
 	return preview
 
-func _add_character_customizer() -> void:
-	_add_text("Your character", 24)
+func _add_character_customizer(parent: Node) -> void:
+	var title := Label.new(); title.text = "Character"; title.add_theme_font_size_override("font_size", 24); parent.add_child(title)
 	var panel := PanelContainer.new(); panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(panel)
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); parent.add_child(panel)
 	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 12); panel.add_child(body)
 	var character := _character_data()
-	_character_preview = _make_avatar_preview(body, character, Vector2(0, 210))
-	var fields := VBoxContainer.new(); fields.add_theme_constant_override("separation", 5); body.add_child(fields)
+	_character_preview = _make_avatar_preview(body, character, Vector2(0, 220))
+	var fields := VBoxContainer.new(); fields.add_theme_constant_override("separation", 7); body.add_child(fields)
 	var height_row := HBoxContainer.new(); fields.add_child(height_row)
 	_character_height_text = Label.new(); _character_height_text.text = "Height: %d%%" % roundi(float(character.height) * 100.0); _character_height_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL; height_row.add_child(_character_height_text)
-	_character_height = HSlider.new(); _character_height.min_value = 0.75; _character_height.max_value = 1.25; _character_height.step = 0.05; _character_height.value = float(character.height); _character_height.custom_minimum_size = Vector2(0, 34); fields.add_child(_character_height)
+	var height_value := Label.new(); height_value.text = "Body proportions"; height_value.modulate = Color(1, 1, 1, 0.62); fields.add_child(height_value)
+	_character_height = HSlider.new(); _character_height.min_value = 0.75; _character_height.max_value = 1.25; _character_height.step = 0.05; _character_height.value = float(character.height); _character_height.custom_minimum_size = Vector2(0, 36); fields.add_child(_character_height)
 	_character_height.value_changed.connect(func(_v): _preview_character())
-	var type_label := Label.new(); type_label.text = "Body type"; fields.add_child(type_label)
 	_character_type = OptionButton.new()
 	for label in ["Classic", "Slim", "Broad"]: _character_type.add_item(label)
 	_character_type.select(["classic", "slim", "broad"].find(str(character.bodyType)))
-	_character_type.custom_minimum_size = Vector2(0, 46); fields.add_child(_character_type)
+	_character_type.custom_minimum_size = Vector2(0, 44); fields.add_child(_character_type)
 	_character_type.item_selected.connect(func(_i): _preview_character())
-	var color_label := Label.new(); color_label.text = "Body color"; fields.add_child(color_label)
-	_character_color = ColorPickerButton.new(); _character_color.color = Color(str(character.bodyColor)); _character_color.custom_minimum_size = Vector2(0, 46); fields.add_child(_character_color)
-	_character_color.color_changed.connect(func(_c): _preview_character())
-	var save := Button.new(); save.text = "Save character"; save.custom_minimum_size = Vector2(0, 50); save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var names := {"head": "Head", "torso": "Torso", "leftArm": "Left arm", "rightArm": "Right arm", "leftLeg": "Left leg", "rightLeg": "Right leg"}
+	for part in names:
+		var spec: Dictionary = character.parts[part]
+		var row := VBoxContainer.new(); row.add_theme_constant_override("separation", 4); fields.add_child(row)
+		var heading := HBoxContainer.new(); row.add_child(heading)
+		var part_name := Label.new(); part_name.text = names[part]; part_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL; heading.add_child(part_name)
+		var part_size_text := Label.new(); part_size_text.text = "%d%%" % roundi(float(spec.size) * 100.0); part_size_text.modulate = Color(1, 1, 1, 0.65); heading.add_child(part_size_text)
+		var part_controls := HBoxContainer.new(); part_controls.add_theme_constant_override("separation", 8); row.add_child(part_controls)
+		var slider := HSlider.new(); slider.min_value = 0.7; slider.max_value = 1.3; slider.step = 0.05; slider.value = float(spec.size); slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL; slider.custom_minimum_size = Vector2(0, 34); part_controls.add_child(slider)
+		var picker := ColorPickerButton.new(); picker.color = Color(str(spec.color)); picker.custom_minimum_size = Vector2(56, 40); part_controls.add_child(picker)
+		_character_part_sizes[part] = slider; _character_part_colors[part] = picker
+		slider.value_changed.connect(func(v): part_size_text.text = "%d%%" % roundi(v * 100.0); _preview_character())
+		picker.color_changed.connect(func(_c): _preview_character())
+	var save := Button.new(); save.text = "Save customization"; save.custom_minimum_size = Vector2(0, 50); save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.2, 0.42, 0.82), Color(0.27, 0.5, 0.92), 10))
-	save.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.27, 0.5, 0.92), Color(0.32, 0.56, 1.0), 10))
 	save.pressed.connect(_save_character); body.add_child(save)
 	_character_status = Label.new(); _character_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _character_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_child(_character_status)
 
 func _read_character_controls() -> Dictionary:
 	var types := ["classic", "slim", "broad"]
-	return {"height": _character_height.value, "bodyType": types[_character_type.selected], "bodyColor": _character_color.color.to_html(false)}
+	var parts := {}
+	for part in _character_part_sizes:
+		parts[part] = {"size": _character_part_sizes[part].value, "color": _character_part_colors[part].color.to_html(false)}
+	return {"height": _character_height.value, "bodyType": types[_character_type.selected], "bodyColor": parts["head"]["color"], "parts": parts}
 
 func _preview_character() -> void:
 	if _character_preview == null or not is_instance_valid(_character_preview): return
@@ -288,12 +422,21 @@ func _save_character() -> void:
 	else:
 		_character_status.text = result.error if result.error != "" else "Couldn't save your character. Try again."
 
+func _show_customization() -> void:
+	_hide_auth_shell()
+	_screen = "customization"; _clear()
+	_add_app_header()
+	_add_tabs(false)
+	_add_text("Customization", 28)
+	_add_text("Adjust your character like Roblox. Your changes sync to your website profile and games.", 16, true)
+	_add_character_customizer(_col)
+	_fit()
+
 func _show_details() -> void:
+	_hide_auth_shell()
 	var should_load_reaction := _screen != "details"
 	_screen = "details"; _clear()
-	var header := HBoxContainer.new(); header.add_theme_constant_override("separation", 10); _col.add_child(header)
-	var heading := Label.new(); heading.text = "BlockTopia"; heading.add_theme_font_size_override("font_size", 28); heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(heading)
-	var logout := Button.new(); logout.text = "Sign out"; logout.custom_minimum_size = Vector2(110, 44); logout.pressed.connect(_sign_out); header.add_child(logout)
+	_add_app_header()
 	_add_tabs(true)
 	var art := TextureRect.new(); art.texture = load("res://Assets/baseplate.png"); art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; art.custom_minimum_size = Vector2(0, 240); art.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _col.add_child(art)
 	_add_text("BASEPLATE", 31)
@@ -312,6 +455,7 @@ func _show_details() -> void:
 	_add_button("Play", _launch_game, true)
 	_status = _add_text("", 15, true)
 	if should_load_reaction: _load_reaction()
+	_fit()
 
 func _toggle_report() -> void:
 	if _busy: return

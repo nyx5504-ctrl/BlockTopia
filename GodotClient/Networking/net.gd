@@ -2,6 +2,9 @@ extends Node
 ## WebSocket client for the BlockTopia game server (see /Backend). Handles auth, reconnects and messages.
 signal welcomed(msg: Dictionary)
 signal player_joined(p: Dictionary)
+signal character_updated(character: Dictionary)
+signal player_character_changed(id: int, character: Dictionary)
+signal character_save_result(ok: bool)
 signal player_left(id: int, pname: String)
 signal snapshot(list: Array)
 signal chat_received(id: int, pname: String, text: String)
@@ -102,6 +105,21 @@ func _handle(txt: String) -> void:
 			welcomed.emit(m)
 		"join":
 			var p: Dictionary = m.player; players[int(p.id)] = p; player_joined.emit(p)
+		"character":
+			var changed_id := int(m.get("id", -1))
+			if not m.get("saved", true):
+				character_save_result.emit(false)
+			elif changed_id == my_id:
+				var own_value: Variant = m.get("character", {})
+				my_character = own_value if own_value is Dictionary else {}
+				character_updated.emit(my_character)
+				character_save_result.emit(true)
+			elif players.has(changed_id):
+				var part_value: Variant = m.get("character", {})
+				var player_info: Dictionary = players[changed_id]
+				player_info["character"] = part_value if part_value is Dictionary else {}
+				players[changed_id] = player_info
+				player_character_changed.emit(changed_id, player_info["character"])
 		"leave":
 			players.erase(int(m.id)); muted.erase(int(m.id)); blocked.erase(int(m.id)); player_left.emit(int(m.id), str(m.get("name", "")))
 		"snap": snapshot.emit(m.p)
@@ -141,3 +159,6 @@ func leave() -> void:
 	await get_tree().create_timer(0.25).timeout
 	if state != "idle":
 		ws.close(); state = "idle"; disconnected.emit("Left the game.")
+
+func save_character(character: Dictionary) -> void:
+	if state == "online": _send({"t": "character", "character": character})

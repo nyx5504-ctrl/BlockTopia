@@ -14,12 +14,29 @@ const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
 const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
+const CHARACTER_PARTS = {
+  head: { size: 1, color: "#f2c744" }, torso: { size: 1, color: "#2f6fd6" },
+  leftArm: { size: 1, color: "#f2c744" }, rightArm: { size: 1, color: "#f2c744" },
+  leftLeg: { size: 1, color: "#3f9a52" }, rightLeg: { size: 1, color: "#3f9a52" }
+};
 const normalizeCharacter = raw => {
   const c = raw && typeof raw === "object" ? raw : {};
+  const validColor = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
+  const legacySkin = validColor(c.bodyColor) ? String(c.bodyColor).toLowerCase() : "#f2c744";
+  const inputParts = c.parts && typeof c.parts === "object" ? c.parts : {};
+  const parts = {};
+  for (const [name, defaults] of Object.entries(CHARACTER_PARTS)) {
+    const input = inputParts[name] && typeof inputParts[name] === "object" ? inputParts[name] : {};
+    const size = Number(input.size);
+    const fallbackColor = ["head", "leftArm", "rightArm"].includes(name) ? legacySkin : defaults.color;
+    parts[name] = {
+      size: Number.isFinite(size) ? Math.min(1.3, Math.max(0.7, size)) : defaults.size,
+      color: validColor(input.color) ? String(input.color).toLowerCase() : fallbackColor
+    };
+  }
   const height = Number(c.height);
   const bodyType = ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic";
-  const bodyColor = /^#[0-9a-f]{6}$/i.test(String(c.bodyColor || "")) ? String(c.bodyColor).toLowerCase() : "#f2c744";
-  return { height: Number.isFinite(height) ? Math.min(1.25, Math.max(0.75, height)) : 1, bodyType, bodyColor };
+  return { height: Number.isFinite(height) ? Math.min(1.25, Math.max(0.75, height)) : 1, bodyType, bodyColor: parts.head.color, parts };
 };
 const tooMany = (map, key, max, ms) => { const now = Date.now(), a = (map.get(key) || []).filter(t => now - t < ms); a.push(now); map.set(key, a); return a.length > max; };
 
@@ -213,6 +230,18 @@ function handle(ws, m) {
         r.send(p, { t: "friend_result", ok: true, friends: true, text: `You and ${info.name} are now friends!` });
         if (sender && sender.uid === fuid) r.send(sender, { t: "friend_result", ok: true, friends: true, text: `${p.name} accepted your friend request!` });
       }).catch(() => r.send(p, { t: "friend_result", ok: false, text: "Couldn't accept right now. Try again." })); break; }
+    case "character": {
+      const now = Date.now();
+      if (now - (p.lastCharacterUpdate || 0) < 1000) return r.send(p, { t: "character", id: p.id, saved: false });
+      p.lastCharacterUpdate = now;
+      const character = normalizeCharacter(m.character);
+      store.updateProfile(p.uid, { character }).then(() => {
+        p.character = character;
+        if (p.profile) p.profile.character = character;
+        r.broadcast({ t: "character", id: p.id, character }, p);
+        r.send(p, { t: "character", id: p.id, character, saved: true });
+      }).catch(() => r.send(p, { t: "character", id: p.id, saved: false }));
+      break; }
     case "leave": leaveRoom(p); break;
   }
 }
