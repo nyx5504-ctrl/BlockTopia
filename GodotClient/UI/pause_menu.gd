@@ -68,7 +68,6 @@ func _ready() -> void:
 	Net.player_joined.connect(func(_p): _on_roster())
 	Net.player_left.connect(func(_i, _n): _on_roster())
 	Net.mute_changed.connect(func(_i, _o): if visible: _refresh_players())
-	Net.scores_changed.connect(func(): if visible and pages["Players"].visible: _refresh_players())
 	Net.report_done.connect(_on_report_done)
 	show_page("Players")
 
@@ -107,7 +106,7 @@ func _small_btn(parent: Node, text: String, cb: Callable) -> Button:
 func _refresh_players() -> void:
 	for c in players_list.get_children(): c.queue_free()
 	var ids := Net.players.keys()
-	ids.sort_custom(func(a, b): return Net.scores.get(a, 0) > Net.scores.get(b, 0) or (Net.scores.get(a, 0) == Net.scores.get(b, 0) and a < b))
+	ids.sort()
 	for id in ids:
 		var info: Dictionary = Net.players[id]
 		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11), Color(0.19, 0.19, 0.21), 12)); players_list.add_child(card)
@@ -120,7 +119,6 @@ func _refresh_players() -> void:
 		var sub := Label.new(); sub.add_theme_font_size_override("font_size", 13); sub.modulate = Color(1, 1, 1, 0.5)
 		sub.visible = id != Net.my_id
 		sub.text = ("Blocked" if Net.blocked.has(id) else ("Muted" if Net.muted.has(id) else "Player")); col.add_child(sub)
-		var sc := Label.new(); sc.text = str(Net.scores.get(id, 0)); sc.add_theme_font_size_override("font_size", 20); sc.modulate = Color(1, 1, 1, 0.75); top.add_child(sc)
 		if id == Net.my_id: continue
 		var row := HFlowContainer.new(); row.add_theme_constant_override("h_separation", 8); row.add_theme_constant_override("v_separation", 8); v.add_child(row)
 		_small_btn(row, "Add Friend", func(): Net.send_friend(id))

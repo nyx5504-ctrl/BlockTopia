@@ -24,7 +24,7 @@ export async function createProfile(uid, username) {
     const profile = { username, usernameLower, avatarColor: "#f4f4f2", allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: new Date().toISOString() };
     mem.users.set(uid, profile); return profile;
   }
-  const userRef = db.doc(\`users/\${uid}\`), nameRef = db.doc(\`usernames/\${usernameLower}\`);
+  const userRef = db.doc(`users/${uid}`), nameRef = db.doc(`usernames/${usernameLower}`);
   await db.runTransaction(async tx => {
     const [userSnap, nameSnap] = await Promise.all([tx.get(userRef), tx.get(nameRef)]);
     if (userSnap.exists && userSnap.data().username) return;
@@ -34,20 +34,32 @@ export async function createProfile(uid, username) {
   });
   return await getUser(uid);
 }
+export async function getGameReaction(uid, game) {
+  if (!db) return mem.gameReactions.get(`${game}:${uid}`) || "";
+  const ref = db.doc(`games/${game}/reactions/${uid}`), likeRef = db.doc(`games/${game}/likes/${uid}`);
+  const [snap, likeSnap] = await Promise.all([ref.get(), likeRef.get()]);
+  return likeSnap.exists ? "like" : (snap.exists ? String(snap.data().reaction || "") : "");
+}
 export async function toggleGameReaction(uid, game, reaction) {
-  const key = \`\${game}:\${uid}\`;
+  const key = `${game}:${uid}`;
   if (!db) {
     const old = mem.gameReactions.get(key) || "";
     const next = old === reaction ? "" : reaction;
     if (next) mem.gameReactions.set(key, next); else mem.gameReactions.delete(key);
     return next;
   }
-  const ref = db.doc(\`games/\${game}/reactions/\${uid}\`);
+  const ref = db.doc(`games/${game}/reactions/${uid}`), likeRef = db.doc(`games/${game}/likes/${uid}`);
   let next = reaction;
   await db.runTransaction(async tx => {
-    const snap = await tx.get(ref);
-    if (snap.exists && snap.data().reaction === reaction) { tx.delete(ref); next = ""; }
-    else tx.set(ref, { uid, reaction, updatedAt: TS() });
+    const [snap, likeSnap] = await Promise.all([tx.get(ref), tx.get(likeRef)]);
+    const old = likeSnap.exists ? "like" : (snap.exists ? String(snap.data().reaction || "") : "");
+    if (old === reaction) {
+      tx.delete(ref); if (likeSnap.exists) tx.delete(likeRef); next = "";
+    } else {
+      tx.set(ref, { uid, reaction, updatedAt: TS() });
+      if (reaction === "like") tx.set(likeRef, { at: TS() });
+      else if (likeSnap.exists) tx.delete(likeRef);
+    }
   });
   return next;
 }

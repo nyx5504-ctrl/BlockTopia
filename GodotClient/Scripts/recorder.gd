@@ -18,6 +18,7 @@ var _outline_layer: CanvasLayer
 var _outline: Panel
 var _note: Label
 var _note_id := 0
+var _play_btn: Button
 var _t0 := 0.0
 var _issued := 0
 var _size := Vector2i.ZERO
@@ -41,6 +42,9 @@ func _ready() -> void:
 	_note = Label.new(); _note.visible = false; _note.set_anchors_preset(Control.PRESET_CENTER_BOTTOM); _note.position = Vector2(-220, -70); _note.custom_minimum_size = Vector2(440, 0)
 	_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _note.add_theme_font_size_override("font_size", 20); _note.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95)); _note.add_theme_constant_override("outline_size", 8)
 	_note.mouse_filter = Control.MOUSE_FILTER_IGNORE; _outline_layer.add_child(_note)
+	_play_btn = Button.new(); _play_btn.text = "Play saved video"; _play_btn.visible = false
+	_play_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM); _play_btn.position = Vector2(-110, -24); _play_btn.custom_minimum_size = Vector2(220, 44)
+	_play_btn.pressed.connect(_open_recording); _outline_layer.add_child(_play_btn)
 	for a in OS.get_cmdline_user_args():
 		if str(a).begins_with("--rectest="): out_dir_override = str(a).substr(10); _test = true
 
@@ -77,7 +81,7 @@ func start() -> void:
 	_path = dir.path_join("BlockTopia_%04d-%02d-%02d_%02d-%02d-%02d.avi" % [d.year, d.month, d.day, d.hour, d.minute, d.second])
 	if not _is_fullscreen():
 		Settings.fullscreen = true; Settings.apply_window()
-	recording = true; _outline.visible = true; _issued = 0; _size = Vector2i.ZERO; _audio_acc = PackedVector2Array(); _w = null; _queue.clear()
+	recording = true; _outline.visible = true; _play_btn.visible = false; _issued = 0; _size = Vector2i.ZERO; _audio_acc = PackedVector2Array(); _w = null; _queue.clear()
 	_cap = AudioEffectCapture.new(); _cap.buffer_length = 1.0; AudioServer.add_bus_effect(0, _cap)
 	_t0 = Time.get_ticks_msec() / 1000.0 + START_DELAY
 	_say("Recording started. Press F12 to stop.", START_DELAY)
@@ -95,8 +99,19 @@ func stop(silent := false) -> void:
 	last_path = _path if (_w != null and _w.frames > 0) else ""
 	_w = null
 	if not silent:
-		if last_path != "": _say("Saved to Downloads / BlockTopia Videos", 4.0)
+		if last_path != "":
+			_play_btn.visible = true
+			var saved := last_path
+			var open_error := OS.shell_open(last_path)
+			_say("Saved video. Opening it now." if open_error == OK else "Saved video. Tap Play saved video to open it.", 4.0)
+			get_tree().create_timer(20.0).timeout.connect(_hide_play_button.bind(saved))
 		else: _say("Recording was too short to save.", 3.0)
+
+func _open_recording() -> void:
+	if last_path != "" and FileAccess.file_exists(last_path): OS.shell_open(last_path)
+
+func _hide_play_button(saved_path: String) -> void:
+	if is_instance_valid(_play_btn) and last_path == saved_path: _play_btn.visible = false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:

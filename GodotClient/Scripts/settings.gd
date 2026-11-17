@@ -17,6 +17,11 @@ var fullscreen := false
 var registered_exe := ""
 var launch := {}            # {game, code, ws}
 var protocol_launched := false
+# Native sign-in tokens live only for this app session and never go into a game link or settings.cfg.
+var native_id_token := ""
+var native_refresh_token := ""
+var native_token_expiry := 0
+var native_profile: Dictionary = {}
 
 func _ready() -> void:
 	load_cfg()

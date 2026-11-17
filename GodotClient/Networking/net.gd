@@ -16,7 +16,6 @@ signal mute_changed(id: int, on: bool)
 signal report_done(duplicate: bool)
 signal friend_result(ok: bool, text: String)
 signal friend_request(id: int, pname: String)
-signal scores_changed
 
 var ping_ms := -1            # round-trip time to the server, measured every few seconds
 var _ping_at := 0.0
@@ -31,7 +30,6 @@ var epoch := 0
 var players := {}     # id -> {id, name, color}
 var muted := {}       # id -> true (session mute)
 var blocked := {}     # id -> true (persistent block)
-var scores := {}      # id -> score
 var state := "idle"   # idle | connecting | online | reconnecting
 var intentional := false
 var _attempt := 0
@@ -41,7 +39,7 @@ var _t0 := 0.0
 
 func connect_with_code(u: String, c: String) -> void:
 	url = u; code = c; session = ""; intentional = false; _attempt = 0
-	players = {}; muted = {}; blocked = {}; scores = {}; state = "connecting"
+	players = {}; muted = {}; blocked = {}; state = "connecting"
 	_open()
 
 func _open() -> void:
@@ -96,12 +94,11 @@ func _handle(txt: String) -> void:
 			my_id = int(m.id); my_name = str(m.get("name", "")); session = str(m.session); epoch = int(m.e)
 			players = {my_id: {"id": my_id, "name": my_name, "color": m.get("color", "#ffffff")}}
 			for p in m.players: players[int(p.id)] = p
-			for id in players: scores[id] = int(players[id].get("score", 0))
 			welcomed.emit(m)
 		"join":
-			var p: Dictionary = m.player; players[int(p.id)] = p; scores[int(p.id)] = int(p.get("score", 0)); player_joined.emit(p)
+			var p: Dictionary = m.player; players[int(p.id)] = p; player_joined.emit(p)
 		"leave":
-			players.erase(int(m.id)); scores.erase(int(m.id)); muted.erase(int(m.id)); blocked.erase(int(m.id)); player_left.emit(int(m.id), str(m.get("name", "")))
+			players.erase(int(m.id)); muted.erase(int(m.id)); blocked.erase(int(m.id)); player_left.emit(int(m.id), str(m.get("name", "")))
 		"snap": snapshot.emit(m.p)
 		"chat": chat_received.emit(int(m.id), str(m.name), str(m.text))
 		"chat_blocked":
@@ -118,9 +115,6 @@ func _handle(txt: String) -> void:
 			if m.on: d[int(m.id)] = true
 			else: d.erase(int(m.id))
 			mute_changed.emit(int(m.id), bool(m.on))
-		"scores":
-			for s in m.s: scores[int(s[0])] = int(s[1])
-			scores_changed.emit()
 		"friend_request": friend_request.emit(int(m.get("id", -1)), str(m.get("name", "?")))
 		"friend_result": friend_result.emit(bool(m.get("ok", false)), str(m.get("text", "")))
 		"report_ok": report_done.emit(bool(m.get("dup", false)))

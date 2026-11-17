@@ -7,7 +7,9 @@ var chat: ChatUI
 var pause: PauseMenu
 var touch: TouchControls
 var fprompt: FriendPrompt
-var overlay: Label
+var overlay: Control
+var overlay_text: Label
+var overlay_back: Button
 var plist: PlayerList
 var world: WorldBuilder
 var sun: DirectionalLight3D
@@ -33,7 +35,7 @@ func _ready() -> void:
 	Net.disconnected.connect(_on_disconnected); Net.reconnecting.connect(func(a): _show("Connection lost. Reconnecting (%d)..." % a))
 	if Net.state == "idle":
 		if Settings.launch.has("code"): _show("Connecting to BlockTopia..."); Net.connect_with_code(Settings.launch.ws, Settings.launch.code)
-		else: _show("No launch info. Press PLAY on the BlockTopia website."); _fatal = true
+		else: _fatal = true; _show("Sign in and choose Play from the dashboard.")
 
 func _apply_quality() -> void:
 	var q := Settings.quality
@@ -58,10 +60,16 @@ func _build_ui() -> void:
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
 	fps_label = Label.new(); fps_label.set_anchors_preset(Control.PRESET_CENTER_TOP); fps_label.position = Vector2(-40, 66); fps_label.add_theme_font_size_override("font_size", 16); fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9)); fps_label.add_theme_constant_override("outline_size", 6); fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(fps_label)
 	var ol := CanvasLayer.new(); ol.layer = 20; add_child(ol)
-	overlay = Label.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	overlay.add_theme_font_size_override("font_size", 26); overlay.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var bg := ColorRect.new(); bg.color = Color(0.04, 0.04, 0.05, 0.92); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.add_child(bg); bg.show_behind_parent = true
-	ol.add_child(overlay)
+	overlay = Control.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); ol.add_child(overlay)
+	var background := TextureRect.new(); background.texture = load("res://Assets/baseplate.png"); background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); background.mouse_filter = Control.MOUSE_FILTER_IGNORE; overlay.add_child(background)
+	var shade := ColorRect.new(); shade.color = Color(0.025, 0.03, 0.05, 0.72); shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); shade.mouse_filter = Control.MOUSE_FILTER_IGNORE; overlay.add_child(shade)
+	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.add_child(center)
+	var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 12); stack.custom_minimum_size = Vector2(280, 0); stack.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; center.add_child(stack)
+	var game_icon := TextureRect.new(); game_icon.texture = load("res://Assets/icon.svg"); game_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; game_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; game_icon.custom_minimum_size = Vector2(104, 104); game_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; stack.add_child(game_icon)
+	var game_name := Label.new(); game_name.text = "BASEPLATE"; game_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; game_name.add_theme_font_size_override("font_size", 30); stack.add_child(game_name)
+	var creator := Label.new(); creator.text = "By BlockTopia"; creator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; creator.modulate = Color(1, 1, 1, 0.72); creator.add_theme_font_size_override("font_size", 17); stack.add_child(creator)
+	overlay_text = Label.new(); overlay_text.text = "Loading game…"; overlay_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; overlay_text.add_theme_font_size_override("font_size", 18); stack.add_child(overlay_text)
 
 func _touch_on_ui(p: Vector2) -> bool:
 	if pause.visible or overlay.visible or _leaving: return true
@@ -76,10 +84,14 @@ func _toast(t: String) -> void:
 	if me == _toast_id: toast.visible = false
 
 func _show(t: String) -> void:
-	overlay.text = t; overlay.visible = true
-	if _fatal and not has_node("OverlayBack"):
-		var b := Button.new(); b.name = "OverlayBack"; b.text = "Back to BlockTopia"; b.set_anchors_preset(Control.PRESET_CENTER); b.position = Vector2(-110, 70); b.custom_minimum_size = Vector2(220, 46)
-		b.pressed.connect(_exit_game); overlay.add_child(b)
+	overlay_text.text = t; overlay.visible = true
+	if _fatal:
+		if overlay_back == null:
+			overlay_back = Button.new(); overlay_back.text = "Back to dashboard"; overlay_back.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+			overlay_back.position = Vector2(-120, -28); overlay_back.custom_minimum_size = Vector2(240, 50); overlay_back.pressed.connect(_exit_game); overlay.add_child(overlay_back)
+		overlay_back.visible = true
+	elif overlay_back != null:
+		overlay_back.visible = false
 
 func _unhandled_input(e: InputEvent) -> void:
 	if overlay.visible or _leaving: return

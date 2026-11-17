@@ -1,6 +1,6 @@
 class_name PlayerList
 extends CanvasLayer
-## Roblox-style leaderboard (top-right): every player on its own translucent row with an avatar badge, name and score, best score first.
+## Roblox-style player list (top-right): every player on its own translucent row with an avatar badge and name.
 ## Your own row is highlighted. Click a name to open a small tab beside it: Add Friend, Block, Report. Press Tab (or the - button) to hide the list.
 signal report_requested(id: int)
 const ROW_H := 38
@@ -27,12 +27,11 @@ func _ready() -> void:
 	var head := PanelContainer.new(); head.add_theme_stylebox_override("panel", _row_style(Color(0.04, 0.04, 0.05, 0.78), 10)); v.add_child(head)
 	var hh := HBoxContainer.new(); head.add_child(hh)
 	title = Label.new(); title.text = "Players"; title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; title.add_theme_font_size_override("font_size", 16); hh.add_child(title)
-	var sh := Label.new(); sh.text = "SCORE"; sh.modulate = Color(1, 1, 1, 0.45); sh.add_theme_font_size_override("font_size", 12); sh.size_flags_vertical = Control.SIZE_SHRINK_CENTER; hh.add_child(sh)
 	collapse = Button.new(); collapse.text = "-"; collapse.flat = true; collapse.custom_minimum_size = Vector2(28, 24); collapse.focus_mode = Control.FOCUS_NONE; collapse.pressed.connect(toggle); hh.add_child(collapse)
 	rows = VBoxContainer.new(); rows.add_theme_constant_override("separation", 3); v.add_child(rows)
 	_build_popup(root)
 	Net.welcomed.connect(func(_m): refresh()); Net.player_joined.connect(func(_p): refresh()); Net.player_left.connect(func(_i, _n): refresh())
-	Net.scores_changed.connect(refresh); Net.mute_changed.connect(func(_i, _o): refresh())
+	Net.mute_changed.connect(func(_i, _o): refresh())
 	if Settings.is_mobile(): panel.offset_left = -200; toggle()
 
 func _row_style(c: Color, r := 8) -> StyleBoxFlat:
@@ -56,7 +55,7 @@ func refresh() -> void:
 	for c in rows.get_children(): c.queue_free()
 	_row_nodes.clear()
 	var ids := Net.players.keys()
-	ids.sort_custom(func(a, b): return Net.scores.get(a, 0) > Net.scores.get(b, 0) or (Net.scores.get(a, 0) == Net.scores.get(b, 0) and a < b))
+	ids.sort()
 	title.text = "Players (%d)" % ids.size()
 	for id in ids:
 		var info: Dictionary = Net.players[id]; var me: bool = id == Net.my_id
@@ -70,7 +69,6 @@ func refresh() -> void:
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; n.clip_text = true; n.mouse_filter = Control.MOUSE_FILTER_IGNORE; n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		if Net.blocked.has(id): n.modulate = Color(1, 1, 1, 0.4); n.text += " (blocked)"
 		h.add_child(n)
-		var sc := Label.new(); sc.text = str(Net.scores.get(id, 0)); sc.modulate = Color(1, 1, 1, 0.8); sc.mouse_filter = Control.MOUSE_FILTER_IGNORE; sc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; h.add_child(sc)
 		if not me: b.pressed.connect(func(): _open_popup(id, b))
 		rows.add_child(b); _row_nodes[id] = b
 	if target != -1 and not Net.players.has(target): popup.visible = false

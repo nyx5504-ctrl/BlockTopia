@@ -24,5 +24,8 @@ Set `WEBSITE_URL` in `GodotClient/Scripts/settings.gd` to your Pages URL.
 ## 4. Client builds
 See `BUILDING.md`. After the workflow runs, upload the zips/APK to a GitHub Release and paste their URLs into `DOWNLOADS` in `Website/js/config.js`.
 
+## Native app sign-in and dashboard
+Opening the installed app manually shows email/password sign-in or account creation, then the Baseplate dashboard. The Godot client uses Firebase Authentication's REST API with the public Web API key from `Website/js/firebase-config.js`. ID and refresh tokens stay in app memory and are sent to the backend only as bearer tokens; they are never put in a game link. The backend `/profile` endpoint reads or creates the user's username profile. `/game-feedback` stores a like/dislike or a game report in Firestore using the server Admin SDK. Email/Password must be enabled in Firebase as above.
+
 ## How PLAY works
-Website -> `POST /launch` with the user's Firebase ID token -> server returns a **single-use code valid 60 s** -> website opens `blocktopia://play?game=baseplate&code=...&ws=wss://...` -> client opens the WebSocket and sends the code -> server swaps it for a session. No password or long-lived token is ever in a URL. Leaving sends `leave`, closes the socket, and quits the client if it was started by a link.
+The website and native dashboard both call `POST /launch` with a Firebase ID token -> server returns a **single-use code valid 60 s** -> the website opens `blocktopia://play?game=baseplate&code=...&ws=wss://...` or the native dashboard opens the game in its own app window -> client opens the WebSocket and sends the code -> server swaps it for a session. No password or long-lived token is ever in a game link. Leaving sends `leave` and returns to the app dashboard or quits the client if it was started by a website link.
