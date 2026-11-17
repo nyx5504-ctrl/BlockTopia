@@ -98,7 +98,20 @@ func _on_roster() -> void:
 
 # ---------------- Players ----------------
 func _players_page(parent: Node) -> void:
-	players_list = VBoxContainer.new(); players_list.add_theme_constant_override("separation", 8); players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(players_list); pages["Players"] = players_list
+	var page := VBoxContainer.new(); page.add_theme_constant_override("separation", 10); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(page); pages["Players"] = page
+	var preview_card := PanelContainer.new(); preview_card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11), Color(0.19, 0.19, 0.21), 12)); page.add_child(preview_card)
+	var preview_stack := VBoxContainer.new(); preview_stack.add_theme_constant_override("separation", 6); preview_card.add_child(preview_stack)
+	var title := Label.new(); title.text = "Your character"; title.add_theme_font_size_override("font_size", 17); preview_stack.add_child(title)
+	var container := SubViewportContainer.new(); container.stretch = true; container.custom_minimum_size = Vector2(0, 150); container.size_flags_horizontal = Control.SIZE_EXPAND_FILL; preview_stack.add_child(container)
+	var view := SubViewport.new(); view.size = Vector2i(320, 180); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS; container.add_child(view)
+	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
+	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 5.4); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
+	var avatar := Avatar.new(); avatar.setup(Net.my_name, Color(Net.my_color), Net.my_character, false); view.add_child(avatar)
+	players_list = VBoxContainer.new(); players_list.add_theme_constant_override("separation", 8); players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.add_child(players_list)
+
+func _face_color(info: Dictionary) -> Color:
+	var character: Variant = info.get("character", {})
+	return Color(str(character.get("bodyColor", "#f2c744"))) if character is Dictionary else Color("f2c744")
 
 func _small_btn(parent: Node, text: String, cb: Callable) -> Button:
 	var b := Button.new(); b.text = text; b.custom_minimum_size = Vector2(0, 40); b.add_theme_font_size_override("font_size", 16); b.pressed.connect(cb); parent.add_child(b); return b
@@ -112,7 +125,7 @@ func _refresh_players() -> void:
 		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11), Color(0.19, 0.19, 0.21), 12)); players_list.add_child(card)
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); card.add_child(v)
 		var top := HBoxContainer.new(); top.add_theme_constant_override("separation", 12); v.add_child(top)
-		top.add_child(AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 40))
+		top.add_child(AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 40, _face_color(info)))
 		var col := VBoxContainer.new(); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; col.add_theme_constant_override("separation", 0); top.add_child(col)
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.clip_text = true; n.add_theme_font_size_override("font_size", 20)
 		col.add_child(n)
