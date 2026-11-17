@@ -46,6 +46,8 @@ func _ready() -> void:
 			_show_profile_setup()
 		else:
 			_clear_native_session(); _show_auth()
+	else:
+		_show_auth()
 
 func _fit() -> void:
 	if _col == null: return
@@ -237,10 +239,13 @@ func _show_details() -> void:
 	if should_load_reaction: _load_reaction()
 
 func _toggle_report() -> void:
+	if _busy: return
 	_report_open = not _report_open; _show_details()
 
 func _load_reaction() -> void:
+	_busy = true
 	var result := await _api("game-feedback", {"game": "baseplate", "action": "get-reaction"})
+	_busy = false
 	if _screen == "details" and result.ok:
 		_reaction = str(result.data.get("reaction", "")); _show_details()
 
