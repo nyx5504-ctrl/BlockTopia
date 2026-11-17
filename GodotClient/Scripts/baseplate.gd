@@ -30,6 +30,7 @@ func _ready() -> void:
 	Net.chat_received.connect(_on_chat_bubble); Net.friend_result.connect(func(ok, t): _toast(t); chat.system(t, "#8be28b" if ok else "#e8b33c"))
 	Net.welcomed.connect(_on_welcome); Net.player_joined.connect(_add_remote)
 	Net.player_left.connect(_on_left); Net.snapshot.connect(_on_snapshot)
+	Net.character_updated.connect(_on_character_updated); Net.player_character_changed.connect(_on_player_character_changed)
 	Net.respawned.connect(func(p, _e): local.teleport(p)); Net.corrected.connect(func(p, _e): local.teleport(p))
 	Net.kicked.connect(func(r): _fatal = true; _show("You were removed from the game (%s)." % r))
 	Net.disconnected.connect(_on_disconnected); Net.reconnecting.connect(func(a): _show("Connection lost. Reconnecting (%d)..." % a))
@@ -121,6 +122,12 @@ func _add_remote(p: Dictionary) -> void:
 func _on_chat_bubble(id: int, _n: String, text: String) -> void:
 	if id == Net.my_id and local: local.avatar.say(text)
 	elif remotes.has(id): remotes[id].node.say(text)
+
+func _on_character_updated(character: Dictionary) -> void:
+	if local != null and local.avatar != null: local.avatar.apply_character(character)
+
+func _on_player_character_changed(id: int, character: Dictionary) -> void:
+	if remotes.has(id): remotes[id].node.apply_character(character)
 
 func _on_left(id: int, pname: String) -> void:
 	if remotes.has(id): remotes[id].node.queue_free(); remotes.erase(id)
