@@ -6,13 +6,63 @@ import { t, fmtDate, fmtRel, countryName } from "./i18n.js";
 import { watchDevices, revokeDevice, removeDevice } from "./devices.js";
 import { errKey } from "./auth.js";
 
-const SECTIONS = ["account", "security", "privacy", "language"];
+const SECTIONS = ["account", "customization", "security", "privacy", "language"];
 let stopDevices = null, devices = [];
 
 const save = patch => F.updateDoc(F.doc(db, "users", S.user.uid), patch).then(() => { Object.assign(S.profile, patch); return true; }).catch(() => { toast(t("err_generic"), "bad"); return false; });
-const characterOf = p => { const c = p?.character || {}; return { height: Math.min(1.25, Math.max(0.75, Number(c.height) || 1)), bodyType: ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic", bodyColor: safeColor(c.bodyColor || "#f2c744") }; };
-function readCharacterControls() { return { height: Number($("#characterHeight").value), bodyType: $("#characterBodyType").value, bodyColor: safeColor($("#characterBodyColor").value) }; }
-function paintCharacterPreview() { const c = readCharacterControls(); $("#characterHeightValue").textContent = Math.round(c.height * 100) + "%"; $("#characterPreview").innerHTML = avatar(S.profile?.username, S.profile?.avatarColor, "lg", c); }
+const PART_DEFAULTS = {
+  head: { size: 1, color: "#f2c744" }, torso: { size: 1, color: "#2f6fd6" },
+  leftArm: { size: 1, color: "#f2c744" }, rightArm: { size: 1, color: "#f2c744" },
+  leftLeg: { size: 1, color: "#3f9a52" }, rightLeg: { size: 1, color: "#3f9a52" }
+};
+const validHex = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
+const clamp = (value, min, max, fallback) => Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : fallback;
+const characterOf = p => {
+  const c = p?.character || {}, legacySkin = validHex(c.bodyColor) ? c.bodyColor.toLowerCase() : "#f2c744", source = c.parts || {}, parts = {};
+  for (const [name, base] of Object.entries(PART_DEFAULTS)) {
+    const item = source[name] || {}, skinPart = ["head", "leftArm", "rightArm"].includes(name);
+    parts[name] = { size: clamp(item.size, 0.7, 1.3, 1), color: validHex(item.color) ? item.color.toLowerCase() : skinPart ? legacySkin : base.color };
+  }
+  return { height: clamp(c.height, 0.75, 1.25, 1), bodyType: ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic", bodyColor: parts.head.color, parts };
+};
+function readCharacterControls() {
+  const parts = {};
+  for (const name of Object.keys(PART_DEFAULTS)) parts[name] = {
+    size: clamp(Number($('[data-part-size="' + name + '"]').value), 0.7, 1.3, 1),
+    color: safeColor($('[data-part-color="' + name + '"]').value)
+  };
+  return { height: clamp(Number($("#characterHeight").value), 0.75, 1.25, 1), bodyType: $("#characterBodyType").value, bodyColor: parts.head.color, parts };
+}
+function paintCharacterPreview() {
+  const c = readCharacterControls(), size = (part, base) => base * c.parts[part].size;
+  $("#characterHeightValue").textContent = Math.round(c.height * 100) + "%";
+  document.querySelectorAll("[data-size-value]").forEach(el => { el.textContent = Math.round(c.parts[el.dataset.sizeValue].size * 100) + "%"; });
+  const bodyWidth = c.bodyType === "slim" ? 0.84 : c.bodyType === "broad" ? 1.16 : 1;
+  const headW = size("head", 42), headH = size("head", 42), torsoW = size("torso", 50) * bodyWidth, torsoH = size("torso", 62);
+  const leftArmW = size("leftArm", 20), leftArmH = size("leftArm", 58), rightArmW = size("rightArm", 20), rightArmH = size("rightArm", 58);
+  const leftLegW = size("leftLeg", 22), leftLegH = size("leftLeg", 60), rightLegW = size("rightLeg", 22), rightLegH = size("rightLeg", 60);
+  const yHead = 18, xTorso = 90 - torsoW / 2, yTorso = 67;
+  const svg = '<svg viewBox="0 0 180 240" aria-hidden="true"><g transform="translate(0 240) scale(1 ' + c.height + ') translate(0 -240)">' +
+    '<rect x="' + (58-leftArmW/2) + '" y="72" width="' + leftArmW + '" height="' + leftArmH + '" rx="3" fill="' + c.parts.leftArm.color + '"/>' +
+    '<rect x="' + (122-rightArmW/2) + '" y="72" width="' + rightArmW + '" height="' + rightArmH + '" rx="3" fill="' + c.parts.rightArm.color + '"/>' +
+    '<rect x="' + (78-leftLegW/2) + '" y="130" width="' + leftLegW + '" height="' + leftLegH + '" rx="2" fill="' + c.parts.leftLeg.color + '"/>' +
+    '<rect x="' + (102-rightLegW/2) + '" y="130" width="' + rightLegW + '" height="' + rightLegH + '" rx="2" fill="' + c.parts.rightLeg.color + '"/>' +
+    '<rect x="' + xTorso + '" y="' + yTorso + '" width="' + torsoW + '" height="' + torsoH + '" rx="4" fill="' + c.parts.torso.color + '"/>' +
+    '<ellipse cx="90" cy="' + (yHead+headH/2) + '" rx="' + (headW/2) + '" ry="' + (headH/2) + '" fill="' + c.parts.head.color + '"/>' +
+    '<ellipse cx="82" cy="' + (yHead+headH*.42) + '" rx="2.8" ry="4.5" fill="#111"/><ellipse cx="98" cy="' + (yHead+headH*.42) + '" rx="2.8" ry="4.5" fill="#111"/>' +
+    '<path d="M78 ' + (yHead+headH*.62) + ' Q90 ' + (yHead+headH*.92) + ' 102 ' + (yHead+headH*.62) + '" fill="none" stroke="#111" stroke-width="2.4" stroke-linecap="round"/></g></svg>';
+  $("#characterPreview").innerHTML = svg;
+}
+function renderCustomization() {
+  const c = characterOf(S.profile || {});
+  $("#characterHeight").value = String(c.height);
+  $("#characterBodyType").value = c.bodyType;
+  for (const name of Object.keys(PART_DEFAULTS)) {
+    $('[data-part-size="' + name + '"]').value = String(c.parts[name].size);
+    $('[data-part-color="' + name + '"]').value = c.parts[name].color;
+  }
+  paintCharacterPreview();
+}
 
 export function applyTheme(theme) {
   const th = theme === "light" ? "light" : "dark";
@@ -39,10 +89,7 @@ export function renderAccount() {
   const p = S.profile || {}, u = auth.currentUser; if (!u) return;
   const character = characterOf(p);
   $("#setAv").outerHTML = avatar(p.username, p.avatarColor, "lg", character).replace("<span", '<span id="setAv"');
-  $("#characterHeight").value = String(character.height);
-  $("#characterBodyType").value = character.bodyType;
-  $("#characterBodyColor").value = character.bodyColor;
-  paintCharacterPreview();
+  renderCustomization();
   $("#setName").textContent = p.username || "";
   $("#setUser").textContent = p.username || "";
   $("#setEmail").textContent = u.email || "";
@@ -97,13 +144,17 @@ export function initSettings() {
   $("#resend2").onclick = () => A.sendEmailVerification(auth.currentUser).then(() => toast(t("sent_ok")), e => toast(t(errKey(e)), "bad"));
 
   // Character controls preview locally and save the shared profile for web and app.
-  $("#characterEditor").addEventListener("input", paintCharacterPreview);
-  $("#characterEditor").addEventListener("change", async () => {
-    const character = readCharacterControls();
+  const persistCharacter = async () => {
+    const button = $("#saveCharacter"), status = $("#characterStatus"), character = readCharacterControls();
+    busy(button, true, "Saving…"); status.textContent = "Saving customization…";
     if (await save({ character })) {
-      renderAccount(); document.dispatchEvent(new Event("profilechange")); toast(t("saved"));
-    }
-  });
+      renderAccount(); document.dispatchEvent(new Event("profilechange")); status.textContent = "Customization saved."; toast(t("saved"));
+    } else status.textContent = "Couldn't save customization. Try again.";
+    busy(button, false);
+  };
+  $("#characterEditor").addEventListener("input", paintCharacterPreview);
+  $("#characterEditor").addEventListener("change", persistCharacter);
+  $("#saveCharacter").addEventListener("click", persistCharacter);
   // Outfit color
   $("#swatches").addEventListener("click", async e => {
     const b = e.target.closest("[data-color]"); if (!b) return;
