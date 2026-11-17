@@ -15,7 +15,10 @@ jobs:
           mkdir -p ~/.local/share/godot/export_templates && unzip -q Godot_v*_export_templates.tpz && mv templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
       - name: Export Windows (release build, no DEBUG label)
         run: |
-          cd GodotClient && godot --headless --import || true
+          cd GodotClient
+          set -o pipefail
+          godot --headless --import 2>&1 | tee /tmp/godot-import.log
+          if grep -Eq 'SCRIPT ERROR:|Parse Error:|ERROR: Failed to load script' /tmp/godot-import.log; then exit 1; fi
           mkdir -p ../Builds/Windows
           godot --headless --export-release "Windows" ../Builds/Windows/BlockTopia.exe
           ls -la ../Builds/Windows
