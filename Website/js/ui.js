@@ -9,7 +9,10 @@ export const ms = v => v?.toMillis ? v.toMillis() : typeof v === "number" ? v : 
 const COLORS = ["#f4f4f2", "#7cc4ff", "#7ee0a6", "#ffd666", "#ff8f7a", "#b9a2ff", "#ff9ccc", "#b5b8c0"];
 export const AVATAR_COLORS = COLORS;
 export const safeColor = c => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : COLORS[0]);
-export const avatar = (name, color, cls = "") => `<span class="av ${cls}" style="--c:${safeColor(color)}">${esc((name || "?").trim().charAt(0).toUpperCase())}</span>`;
+export const avatar = (name, color, cls = "", character = null) => {
+  const face = safeColor(character?.bodyColor || "#f2c744");
+  return '<span class="av ' + cls + '" style="--c:' + safeColor(color) + ';--face:' + face + '" role="img" aria-label="' + esc(name || "Player") + '"><svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="50" cy="51" rx="36" ry="42" fill="var(--face)"/><ellipse cx="37" cy="42" rx="5.5" ry="9" fill="#101014"/><ellipse cx="64" cy="42" rx="5" ry="8" fill="#101014"/><path d="M30 62 Q50 87 71 61" fill="none" stroke="#101014" stroke-width="5" stroke-linecap="round"/></svg></span>';
+};
 
 let tt;
 export function toast(msg, kind = "") {
