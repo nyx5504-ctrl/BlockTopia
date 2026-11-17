@@ -38,7 +38,7 @@ export async function getGameReaction(uid, game) {
   if (!db) return mem.gameReactions.get(`${game}:${uid}`) || "";
   const ref = db.doc(`games/${game}/reactions/${uid}`), likeRef = db.doc(`games/${game}/likes/${uid}`);
   const [snap, likeSnap] = await Promise.all([ref.get(), likeRef.get()]);
-  return snap.exists ? String(snap.data().reaction || "") : (likeSnap.exists ? "like" : "");
+  return likeSnap.exists ? "like" : (snap.exists ? String(snap.data().reaction || "") : "");
 }
 export async function toggleGameReaction(uid, game, reaction) {
   const key = `${game}:${uid}`;
@@ -52,7 +52,7 @@ export async function toggleGameReaction(uid, game, reaction) {
   let next = reaction;
   await db.runTransaction(async tx => {
     const [snap, likeSnap] = await Promise.all([tx.get(ref), tx.get(likeRef)]);
-    const old = snap.exists ? String(snap.data().reaction || "") : (likeSnap.exists ? "like" : "");
+    const old = likeSnap.exists ? "like" : (snap.exists ? String(snap.data().reaction || "") : "");
     if (old === reaction) {
       tx.delete(ref); if (likeSnap.exists) tx.delete(likeRef); next = "";
     } else {
