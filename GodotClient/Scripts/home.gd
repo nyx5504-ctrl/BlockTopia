@@ -17,10 +17,12 @@ var _content_tabs: Control
 var _top_logout: Button
 var _auth_shell: PanelContainer
 var _auth_shell_margin: MarginContainer
+var _update_notice: PanelContainer
 var _status: Label
 var _email: LineEdit
 var _password: LineEdit
 var _username: LineEdit
+var _remember_check: CheckBox
 var _report_edit: TextEdit
 var _report_reason: OptionButton
 var _auth_mode := "login"
@@ -53,13 +55,18 @@ func _ready() -> void:
 	_refresh_token = Settings.native_refresh_token
 	_token_expiry = Settings.native_token_expiry
 	_profile = Settings.native_profile.duplicate(true)
-	if _id_token != "":
+	Settings.app_update_available.connect(_on_app_update_available)
+	Settings.check_for_app_update()
+	if _refresh_token != "" or _id_token != "":
 		_set_status_screen("Loading your BlockTopia dashboard…")
-		var result := await _api("profile", {})
-		if result.ok and result.data.has("profile"):
-			_profile = result.data.profile; Settings.native_profile = _profile.duplicate(true); _show_dashboard()
-		elif result.ok and result.data.get("needsUsername", false):
-			_show_profile_setup()
+		if await _ensure_fresh_token():
+			var result := await _api("profile", {})
+			if result.ok and result.data.has("profile"):
+				_profile = result.data.profile; Settings.native_profile = _profile.duplicate(true); _show_dashboard()
+			elif result.ok and result.data.get("needsUsername", false):
+				_show_profile_setup()
+			else:
+				_clear_native_session(); _show_auth()
 		else:
 			_clear_native_session(); _show_auth()
 	else:
@@ -93,13 +100,14 @@ func _build_sidebar() -> void:
 	var mark := TextureRect.new(); mark.texture = load("res://Assets/logo.png"); mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; mark.custom_minimum_size = Vector2(36, 36); brand.add_child(mark)
 	var name := Label.new(); name.text = "BlockTopia"; name.add_theme_font_size_override("font_size", 21); name.size_flags_vertical = Control.SIZE_SHRINK_CENTER; brand.add_child(name)
 	var group := ButtonGroup.new()
-	for item in ["Dashboard", "Customization"]:
+	for item in ["Dashboard", "Friends", "Customization"]:
 		var button := Button.new(); button.text = item; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.custom_minimum_size = Vector2(0, 46); button.toggle_mode = true; button.button_group = group
 		button.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.075, 0.075, 0.085), Color(0.075, 0.075, 0.085), 10))
 		button.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.13, 0.13, 0.15), Color(0.13, 0.13, 0.15), 10))
 		button.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10))
 		button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
 		if item == "Dashboard": button.pressed.connect(_show_dashboard)
+		elif item == "Friends": button.pressed.connect(_show_friends)
 		else: button.pressed.connect(_show_customization)
 		stack.add_child(button); _side_buttons[item] = button
 	var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; stack.add_child(spacer)
@@ -111,7 +119,8 @@ func _build_sidebar() -> void:
 func _sync_navigation() -> void:
 	if _side == null: return
 	var is_desktop := _side.visible
-	for name in _side_buttons: _side_buttons[name].button_pressed = (name == "Customization" and _screen == "customization") or (name == "Dashboard" and _screen in ["dashboard", "details"])
+	for name in _side_buttons:
+		_side_buttons[name].button_pressed = (name == "Customization" and _screen == "customization") or (name == "Friends" and _screen == "friends") or (name == "Dashboard" and _screen in ["dashboard", "details"])
 	if _side_chip != null:
 		var character := _character_data() if _profile.has("character") else {"bodyColor": "#f2c744"}
 		var display := str(_profile.get("username", "Player"))
@@ -125,8 +134,8 @@ func _clear() -> void:
 	_content_tabs = null; _top_logout = null
 	for node in _col.get_children():
 		_col.remove_child(node); node.queue_free()
-	_status = null; _email = null; _password = null; _username = null; _report_edit = null; _report_reason = null
-	_character_preview = null; _character_height = null; _character_height_text = null; _character_type = null; _character_part_sizes.clear(); _character_part_colors.clear(); _character_status = null
+	_status = null; _email = null; _password = null; _username = null; _remember_check = null; _report_edit = null; _report_reason = null
+	_character_preview = null; _character_height = null; _character_height_text = null; _character_type = null; _character_part_sizes.clear(); _character_part_colors.clear(); _character_status = null; _update_notice = null
 
 func _set_status_screen(message: String) -> void:
 	_hide_auth_shell()
@@ -159,34 +168,45 @@ func _add_tabs(detail := false) -> void:
 	var group := ButtonGroup.new()
 	var tab_style := ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10)
 	var tab_on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10)
-	var discover := Button.new(); discover.text = "Dashboard"; discover.toggle_mode = true; discover.button_group = group; discover.custom_minimum_size = Vector2(0, 44); discover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	discover.add_theme_stylebox_override("normal", tab_style); discover.add_theme_stylebox_override("hover", tab_style); discover.add_theme_stylebox_override("pressed", tab_on); discover.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
-	discover.button_pressed = _screen in ["dashboard", "details"]
-	discover.pressed.connect(_show_dashboard); row.add_child(discover)
-	var customize := Button.new(); customize.text = "Customization"; customize.toggle_mode = true; customize.button_group = group; customize.custom_minimum_size = Vector2(0, 44); customize.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	customize.add_theme_stylebox_override("normal", tab_style); customize.add_theme_stylebox_override("hover", tab_style); customize.add_theme_stylebox_override("pressed", tab_on); customize.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
-	customize.button_pressed = _screen == "customization"
-	customize.pressed.connect(_show_customization); row.add_child(customize)
+	for item in ["Dashboard", "Friends", "Customization"]:
+		var button := Button.new(); button.text = item; button.toggle_mode = true; button.button_group = group; button.custom_minimum_size = Vector2(0, 44); button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_stylebox_override("normal", tab_style); button.add_theme_stylebox_override("hover", tab_style); button.add_theme_stylebox_override("pressed", tab_on); button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+		button.button_pressed = (item == "Dashboard" and _screen in ["dashboard", "details"]) or (item == "Friends" and _screen == "friends") or (item == "Customization" and _screen == "customization")
+		if item == "Dashboard": button.pressed.connect(_show_dashboard)
+		elif item == "Friends": button.pressed.connect(_show_friends)
+		else: button.pressed.connect(_show_customization)
+		row.add_child(button)
 	if detail:
-		var game := Button.new(); game.text = "Baseplate"; game.disabled = true; game.toggle_mode = true; game.button_group = group; game.custom_minimum_size = Vector2(0, 44); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		game.add_theme_stylebox_override("normal", tab_style); game.add_theme_stylebox_override("pressed", tab_on); row.add_child(game)
+		var game := Button.new(); game.text = "Baseplate"; game.disabled = true; game.custom_minimum_size = Vector2(0, 44); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		game.add_theme_stylebox_override("normal", tab_style); row.add_child(game)
 
 func _show_auth(message := "") -> void:
 	_screen = "auth"; _show_auth_shell(); _clear()
 	var logo := TextureRect.new(); logo.texture = load("res://Assets/logo.png"); logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(96, 96); logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; _col.add_child(logo)
 	_add_text("BlockTopia", 34)
-	_add_text("Sign in or create an account to discover and play games.", 16, true)
+	_add_text("Build, play and hang out in a shared world.", 16, true)
 	var modes := HBoxContainer.new(); modes.add_theme_constant_override("separation", 8); _col.add_child(modes)
 	var mode_group := ButtonGroup.new()
 	for mode in ["login", "signup"]:
-		var b := Button.new(); b.text = "Sign in" if mode == "login" else "Sign up"; b.custom_minimum_size = Vector2(0, 46)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.toggle_mode = true; b.button_group = mode_group; b.button_pressed = _auth_mode == mode; b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
+		var b := Button.new(); b.text = "Log in" if mode == "login" else "Sign up"; b.custom_minimum_size = Vector2(0, 46)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.toggle_mode = true; b.button_group = mode_group; b.button_pressed = _auth_mode == mode
+		b.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10))
+		b.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.16, 0.16, 0.18), Color(0.24, 0.24, 0.27), 10))
+		b.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10))
+		b.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+		b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
 	if _auth_mode == "signup":
-		_username = _add_field("Username (3–20 letters, numbers or _)")
+		_add_text("Username", 15, true)
+		_username = _add_field("3–20 letters, numbers or underscores")
+	_add_text("Email", 15, true)
 	_email = _add_field("Email address"); _email.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS
-	_password = _add_field("Password (at least 8 characters)", true); _password.secret = true
-	_add_button("Create account" if _auth_mode == "signup" else "Sign in", _submit_auth, true)
+	_add_text("Password", 15, true)
+	_password = _add_field("At least 8 characters", true); _password.secret = true
+	_remember_check = null
+	if _auth_mode == "login":
+		_remember_check = CheckBox.new(); _remember_check.text = "Keep me logged in"; _remember_check.button_pressed = Settings.native_remember; _col.add_child(_remember_check)
+	_add_button("Create account" if _auth_mode == "signup" else "Log in", _submit_auth, true)
 	if _auth_mode == "login":
 		_add_button("Forgot password?", _send_password_reset)
 	_status = _add_text(message, 15, true); _status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -208,12 +228,13 @@ func _submit_auth() -> void:
 		_status.text = "Choose a username with 3–20 letters, numbers or underscores."; return
 	if is_signup and password.length() < 8:
 		_status.text = "Use a password with at least 8 characters."; return
-	_busy = true; _status.text = "Signing in…"
+	_busy = true
 	var endpoint := "signUp" if is_signup else "signInWithPassword"
+	_status.text = "Creating your account…" if is_signup else "Signing in…"
 	var result := await _request_json(AUTH_URL + endpoint + "?key=" + FIREBASE_API_KEY, {"email": email, "password": password, "returnSecureToken": true})
 	if not result.ok:
 		_busy = false; _status.text = _auth_error(result.data); return
-	_store_tokens(result.data)
+	_store_tokens(result.data, true if is_signup else (_remember_check != null and _remember_check.button_pressed))
 	if is_signup:
 		await _request_json(AUTH_URL + "sendOobCode?key=" + FIREBASE_API_KEY, {"requestType": "VERIFY_EMAIL", "idToken": _id_token})
 	_status.text = "Loading your dashboard…"
@@ -303,12 +324,57 @@ func _add_app_header() -> void:
 		var user := Label.new(); user.text = str(_profile.username); user.clip_text = true; user.custom_minimum_size = Vector2(45, 0); user.add_theme_color_override("font_color", Color(1, 1, 1, 0.75)); header.add_child(user)
 	_top_logout = Button.new(); _top_logout.text = "Sign out"; _top_logout.custom_minimum_size = Vector2(100, 44); _top_logout.pressed.connect(_sign_out); header.add_child(_top_logout)
 
+func _add_update_banner() -> void:
+	if not Settings.update_available or (_update_notice != null and is_instance_valid(_update_notice)): return
+	_update_notice = PanelContainer.new(); _update_notice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.11, 0.16, 0.25), Color(0.24, 0.42, 0.7), 12)); _col.add_child(_update_notice)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); _update_notice.add_child(row)
+	var note := Label.new(); note.text = "Update %s is available. Download and install it, then reopen BlockTopia." % Settings.update_version; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(note)
+	var get_update := Button.new(); get_update.text = "Download"; get_update.custom_minimum_size = Vector2(100, 44); get_update.pressed.connect(_open_update_download); row.add_child(get_update)
+
+func _on_app_update_available(_version: String) -> void:
+	if _screen in ["dashboard", "details", "customization", "friends"]: _add_update_banner()
+
+func _open_update_download() -> void:
+	if Settings.update_url != "": OS.shell_open(Settings.update_url)
+
+func _add_friends_invite() -> void:
+	_add_text("Friends", 23)
+	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 12); card.add_child(row)
+	var plus := Label.new(); plus.text = "+"; plus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; plus.custom_minimum_size = Vector2(52, 52); plus.add_theme_font_size_override("font_size", 34); plus.add_theme_color_override("font_color", Color("#f2c744")); row.add_child(plus)
+	var details := VBoxContainer.new(); details.size_flags_horizontal = Control.SIZE_EXPAND_FILL; details.add_theme_constant_override("separation", 4); row.add_child(details)
+	var title := Label.new(); title.text = "Add people to play"; title.add_theme_font_size_override("font_size", 19); details.add_child(title)
+	var caption := Label.new(); caption.text = "Explore BlockTopia together."; caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; caption.modulate = Color(1, 1, 1, 0.68); details.add_child(caption)
+	var add := Button.new(); add.text = "Add people"; add.custom_minimum_size = Vector2(118, 46); add.pressed.connect(_show_friends); row.add_child(add)
+
+func _show_friends() -> void:
+	_hide_auth_shell()
+	_screen = "friends"; _clear()
+	_add_app_header()
+	_add_update_banner()
+	_add_tabs(false)
+	_add_text("Friends", 28)
+	_add_text("Add people to play and explore BlockTopia together.", 17, true)
+	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
+	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 10); card.add_child(body)
+	var note := Label.new(); note.text = "Find friends, accept requests, see who's playing, and join them from the website Friends tab."; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.modulate = Color(1, 1, 1, 0.68); body.add_child(note)
+	var open := Button.new(); open.text = "Open Friends"; open.custom_minimum_size = Vector2(0, 48); open.size_flags_horizontal = Control.SIZE_EXPAND_FILL; open.pressed.connect(_open_website_friends); body.add_child(open)
+	_fit()
+
+func _open_website_friends() -> void:
+	OS.shell_open(Settings.WEBSITE_URL + "#/friends")
+
 func _show_dashboard() -> void:
 	_hide_auth_shell()
 	_screen = "dashboard"; _clear()
 	_add_app_header()
+	_add_update_banner()
 	_add_tabs(false)
 	_add_text("Welcome, %s" % str(_profile.get("username", "player")), 23)
+	_add_friends_invite()
 	_add_text("Discover", 28)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
 	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 10); card.add_child(body)
@@ -393,6 +459,7 @@ func _add_character_customizer(parent: Node) -> void:
 		_character_part_sizes[part] = slider; _character_part_colors[part] = picker
 		slider.value_changed.connect(func(v): part_size_text.text = "%d%%" % roundi(v * 100.0); _preview_character())
 		picker.color_changed.connect(func(_c): _preview_character())
+	var reset := Button.new(); reset.text = "Reset to defaults"; reset.custom_minimum_size = Vector2(0, 46); reset.pressed.connect(_reset_character_controls); body.add_child(reset)
 	var save := Button.new(); save.text = "Save customization"; save.custom_minimum_size = Vector2(0, 50); save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.2, 0.42, 0.82), Color(0.27, 0.5, 0.92), 10))
 	save.pressed.connect(_save_character); body.add_child(save)
@@ -411,6 +478,16 @@ func _preview_character() -> void:
 	_character_height_text.text = "Height: %d%%" % roundi(float(c.height) * 100.0)
 	_character_preview.apply_character(c)
 
+func _reset_character_controls() -> void:
+	_character_height.value = 1.0
+	_character_type.select(0)
+	var default_colors := {"head": "#f2c744", "torso": "#2f6fd6", "leftArm": "#f2c744", "rightArm": "#f2c744", "leftLeg": "#3f9a52", "rightLeg": "#3f9a52"}
+	for part in default_colors:
+		_character_part_sizes[part].value = 1.0
+		_character_part_colors[part].color = Color(str(default_colors[part]))
+	_preview_character()
+	if _character_status != null: _character_status.text = "Default character restored. Save to apply."
+
 func _save_character() -> void:
 	if _busy: return
 	_busy = true; _character_status.text = "Saving your character…"
@@ -426,6 +503,7 @@ func _show_customization() -> void:
 	_hide_auth_shell()
 	_screen = "customization"; _clear()
 	_add_app_header()
+	_add_update_banner()
 	_add_tabs(false)
 	_add_text("Customization", 28)
 	_add_text("Adjust your character like Roblox. Your changes sync to your website profile and games.", 16, true)
@@ -437,6 +515,7 @@ func _show_details() -> void:
 	var should_load_reaction := _screen != "details"
 	_screen = "details"; _clear()
 	_add_app_header()
+	_add_update_banner()
 	_add_tabs(true)
 	var art := TextureRect.new(); art.texture = load("res://Assets/baseplate.png"); art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; art.custom_minimum_size = Vector2(0, 240); art.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _col.add_child(art)
 	_add_text("BASEPLATE", 31)
@@ -510,16 +589,16 @@ func _sign_out() -> void:
 
 func _clear_native_session() -> void:
 	_id_token = ""; _refresh_token = ""; _token_expiry = 0; _profile = {}; _reaction = ""; _report_open = false
-	Settings.native_id_token = ""; Settings.native_refresh_token = ""; Settings.native_token_expiry = 0; Settings.native_profile = {}
+	Settings.clear_native_session()
 
-func _store_tokens(data: Dictionary) -> void:
+func _store_tokens(data: Dictionary, remember := true) -> void:
 	_id_token = str(data.get("idToken", "")); _refresh_token = str(data.get("refreshToken", ""))
 	_token_expiry = int(Time.get_unix_time_from_system()) + int(str(data.get("expiresIn", "3600")))
 	Settings.native_id_token = _id_token; Settings.native_refresh_token = _refresh_token; Settings.native_token_expiry = _token_expiry
+	Settings.persist_native_session(remember)
 
 func _ensure_fresh_token() -> bool:
-	if _id_token == "": return false
-	if int(Time.get_unix_time_from_system()) < _token_expiry - 60: return true
+	if _id_token != "" and int(Time.get_unix_time_from_system()) < _token_expiry - 60: return true
 	if _refresh_token == "": return false
 	var form := "grant_type=refresh_token&refresh_token=" + _refresh_token.uri_encode()
 	var result := await _request_raw(TOKEN_URL + "?key=" + FIREBASE_API_KEY, PackedStringArray(["Content-Type: application/x-www-form-urlencoded"]), HTTPClient.METHOD_POST, form)
@@ -528,6 +607,7 @@ func _ensure_fresh_token() -> bool:
 	_id_token = str(data.get("id_token", "")); _refresh_token = str(data.get("refresh_token", _refresh_token))
 	_token_expiry = int(Time.get_unix_time_from_system()) + int(str(data.get("expires_in", "3600")))
 	Settings.native_id_token = _id_token; Settings.native_refresh_token = _refresh_token; Settings.native_token_expiry = _token_expiry
+	if Settings.native_remember: Settings.persist_native_session(true)
 	return _id_token != ""
 
 func _api(path: String, body: Dictionary) -> Dictionary:

@@ -1,7 +1,7 @@
 // Home: the game list (only Baseplate for now), likes, favorites and live player counts.
 import { db, F } from "./fb.js";
-import { S } from "./state.js";
-import { $, esc, icon, toast } from "./ui.js";
+import { S, on } from "./state.js";
+import { $, esc, icon, avatar, toast } from "./ui.js";
 import { t } from "./i18n.js";
 import { play } from "./play.js";
 
@@ -43,8 +43,28 @@ function featured(g) {
 }
 const card = g => `<button class="card gcard" data-play="${g.id}" type="button"><div class="art">${THUMB}</div><div class="meta"><b>${esc(g.name)}</b><span>${esc(t("playing", { n: st(g.id).playing }))}</span></div></button>`;
 
+function renderHomeFriends() {
+  const wrap = $("#homeFriends");
+  if (!wrap) return;
+  const entries = S.friends instanceof Map ? [...S.friends.entries()] : [];
+  const friendTiles = entries.slice(0, 8).map(([id, friend]) => {
+    const name = friend.username || "Player";
+    const online = S.presence instanceof Map && S.presence.has(id);
+    return `<a class="card" href="#/friends" style="display:flex;align-items:center;gap:12px;padding:14px;text-decoration:none">
+      ${avatar(name, friend.avatarColor || "#f4f4f2", "lg")}
+      <span style="min-width:0;display:flex;flex-direction:column"><b>${esc(name)}</b><small style="color:var(--muted)">${online ? "Playing Baseplate" : "View friend"}</small></span>
+    </a>`;
+  }).join("");
+  const invite = `<a class="card" href="#/friends" style="display:flex;align-items:center;gap:12px;padding:14px;text-decoration:none">
+    <span class="av lg" aria-hidden="true" style="font-size:28px;color:var(--accent)">+</span>
+    <span style="display:flex;flex-direction:column"><b>Add people to play</b><small style="color:var(--muted)">Explore BlockTopia together</small></span>
+  </a>`;
+  wrap.innerHTML = `<h2>Friends</h2><div class="grid">${friendTiles}${invite}</div>`;
+}
+
 export function renderHome(q = query) {
   query = q;
+  renderHomeFriends();
   const s = q.trim().toLowerCase(), list = GAMES.filter(g => !s || g.name.toLowerCase().includes(s));
   $("#homeFeatured").hidden = !!s;
   $("#featured").innerHTML = GAMES.length ? featured(GAMES[0]) : "";
@@ -56,6 +76,7 @@ export function renderHome(q = query) {
 }
 
 export function initHome() {
+  on("friends", renderHomeFriends);
   $("#v-home").addEventListener("click", async e => {
     const p = e.target.closest("[data-play]"), l = e.target.closest("[data-like]"), f = e.target.closest("[data-fav]");
     if (p) return play();

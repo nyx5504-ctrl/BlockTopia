@@ -2,7 +2,20 @@ extends Node
 ## Global settings, input map, launch info (from blocktopia:// links) and protocol registration.
 const WEBSITE_URL := "https://nyx5504-ctrl.github.io/BlockTopia/"
 const CFG_PATH := "user://settings.cfg"
+const RELEASE_API := "https://api.github.com/repos/nyx5504-ctrl/BlockTopia/releases/latest"
 signal changed
+signal app_update_available(version: String)
+
+var native_id_token := ""
+var native_refresh_token := ""
+var native_token_expiry := 0
+var native_profile: Dictionary = {}
+var native_remember := true
+
+var update_available := false
+var update_version := ""
+var update_url := ""
+var _update_check_running := false
 
 var sensitivity := 0.003
 var volume := 0.8
@@ -17,11 +30,7 @@ var fullscreen := false
 var registered_exe := ""
 var launch := {}            # {game, code, ws}
 var protocol_launched := false
-# Native sign-in tokens live only for this app session and never go into a game link or settings.cfg.
-var native_id_token := ""
-var native_refresh_token := ""
-var native_token_expiry := 0
-var native_profile: Dictionary = {}
+# Firebase ID tokens stay in memory; only the refresh token is persisted when "Keep me logged in" is enabled.
 
 func _ready() -> void:
 	load_cfg()
@@ -46,14 +55,74 @@ func load_cfg() -> void:
 	if c.load(CFG_PATH) != OK: return
 	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "show_fps", "show_names", "fullscreen"]:
 		set(k, c.get_value("s", k, get(k)))
+	native_remember = bool(c.get_value("auth", "remember", true))
+	native_refresh_token = str(c.get_value("auth", "refresh_token", "")) if native_remember else ""
 
 func save_cfg() -> void:
 	var c := ConfigFile.new()
 	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "show_fps", "show_names", "fullscreen"]:
 		c.set_value("s", k, get(k))
+	c.set_value("auth", "remember", native_remember)
+	c.set_value("auth", "refresh_token", native_refresh_token if native_remember else "")
 	c.save(CFG_PATH)
 	apply_audio()
 	changed.emit()
+
+func persist_native_session(remember := true) -> void:
+	native_remember = remember
+	save_cfg()
+
+func clear_native_session() -> void:
+	native_id_token = ""
+	native_refresh_token = ""
+	native_token_expiry = 0
+	native_profile = {}
+	save_cfg()
+
+func check_for_app_update() -> void:
+	if _update_check_running:
+		return
+	_update_check_running = true
+	var request := HTTPRequest.new()
+	request.timeout = 15.0
+	add_child(request)
+	var err := request.request(RELEASE_API, PackedStringArray(["Accept: application/vnd.github+json", "Cache-Control: no-cache"]))
+	if err != OK:
+		request.queue_free()
+		_update_check_running = false
+		return
+	var response: Array = await request.request_completed
+	request.queue_free()
+	_update_check_running = false
+	if int(response[1]) < 200 or int(response[1]) >= 300:
+		return
+	var parsed: Variant = JSON.parse_string((response[3] as PackedByteArray).get_string_from_utf8())
+	if not (parsed is Dictionary):
+		return
+	var latest: Dictionary = parsed
+	var latest_tag := str(latest.get("tag_name", "")).strip_edges()
+	var current_tag := str(ProjectSettings.get_setting("application/config/version", "v1.0")).strip_edges()
+	if latest_tag == "" or not _version_is_newer(latest_tag, current_tag):
+		return
+	update_version = latest_tag
+	update_url = str(latest.get("html_url", "https://github.com/nyx5504-ctrl/BlockTopia/releases/latest"))
+	var wanted_asset := "BlockTopia.apk" if OS.has_feature("android") else "BlockTopia-Windows.zip"
+	for asset in latest.get("assets", []):
+		if asset is Dictionary and str(asset.get("name", "")) == wanted_asset:
+			update_url = str(asset.get("browser_download_url", update_url))
+			break
+	update_available = true
+	app_update_available.emit(update_version)
+
+func _version_is_newer(candidate: String, installed: String) -> bool:
+	var a := candidate.trim_prefix("v").split(".")
+	var b := installed.trim_prefix("v").split(".")
+	for i in range(maxi(a.size(), b.size())):
+		var av := int(a[i]) if i < a.size() else 0
+		var bv := int(b[i]) if i < b.size() else 0
+		if av > bv: return true
+		if av < bv: return false
+	return false
 
 func apply_audio() -> void:
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(volume, 0.0001)))
