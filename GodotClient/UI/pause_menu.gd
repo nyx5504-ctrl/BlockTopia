@@ -13,6 +13,7 @@ var panel: PanelContainer
 var pages := {}
 var tab_btns := {}
 var players_list: VBoxContainer
+var self_preview_view: SubViewport
 var info_label: Label
 var _stats_t := 0.0
 var leave_btn: Button
@@ -65,6 +66,7 @@ func _ready() -> void:
 	resume.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.8, 0.8, 0.83), Color(0.8, 0.8, 0.83)))
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: resume.add_theme_color_override(c, Color(0.05, 0.05, 0.06))
 	get_viewport().size_changed.connect(_fit); _fit()
+	Net.welcomed.connect(func(_m): _refresh_self_preview())
 	Net.player_joined.connect(func(_p): _on_roster())
 	Net.player_left.connect(func(_i, _n): _on_roster())
 	Net.mute_changed.connect(func(_i, _o): if visible: _refresh_players())
@@ -103,11 +105,18 @@ func _players_page(parent: Node) -> void:
 	var preview_stack := VBoxContainer.new(); preview_stack.add_theme_constant_override("separation", 6); preview_card.add_child(preview_stack)
 	var title := Label.new(); title.text = "Your character"; title.add_theme_font_size_override("font_size", 17); preview_stack.add_child(title)
 	var container := SubViewportContainer.new(); container.stretch = true; container.custom_minimum_size = Vector2(0, 150); container.size_flags_horizontal = Control.SIZE_EXPAND_FILL; preview_stack.add_child(container)
-	var view := SubViewport.new(); view.size = Vector2i(320, 180); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS; container.add_child(view)
+	var view := SubViewport.new(); view.size = Vector2i(320, 180); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS; container.add_child(view); self_preview_view = view
 	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
 	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 5.4); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
-	var avatar := Avatar.new(); avatar.setup(Net.my_name, Color(Net.my_color), Net.my_character, false); view.add_child(avatar)
+	_refresh_self_preview()
 	players_list = VBoxContainer.new(); players_list.add_theme_constant_override("separation", 8); players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.add_child(players_list)
+
+func _refresh_self_preview() -> void:
+	if self_preview_view == null or not is_instance_valid(self_preview_view): return
+	for child in self_preview_view.get_children():
+		if child is Avatar: child.queue_free()
+	if Net.my_name == "": return
+	var avatar := Avatar.new(); avatar.setup(Net.my_name, Color(Net.my_color), Net.my_character, false); self_preview_view.add_child(avatar)
 
 func _face_color(info: Dictionary) -> Color:
 	var character: Variant = info.get("character", {})
