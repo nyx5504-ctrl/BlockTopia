@@ -236,7 +236,7 @@ func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0
 	var view := SubViewport.new(); view.size = Vector2i(360, 220); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.world_3d = World3D.new(); holder.add_child(view)
 	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
-	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 5.4); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
+	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 3.8); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
 	var preview := Avatar.new(); preview.setup(str(_profile.get("username", "Player")), Color(str(_profile.get("avatarColor", "#2f6fd6"))), character, false); view.add_child(preview)
 	return preview
 
