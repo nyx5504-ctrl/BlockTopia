@@ -118,29 +118,34 @@ func _submit_auth() -> void:
 	var username := _username.text.strip_edges() if _username != null else ""
 	if email == "" or password == "":
 		_status.text = "Enter your email and password."; return
-	if _auth_mode == "signup" and (username.length() < 3 or username.length() > 20 or not username.matches("^[A-Za-z0-9_]+$")):
+	var is_signup := _auth_mode == "signup"
+	if is_signup and not _valid_username(username):
 		_status.text = "Choose a username with 3–20 letters, numbers or underscores."; return
-	if _auth_mode == "signup" and password.length() < 8:
+	if is_signup and password.length() < 8:
 		_status.text = "Use a password with at least 8 characters."; return
 	_busy = true; _status.text = "Signing in…"
-	var endpoint := "signUp" if _auth_mode == "signup" else "signInWithPassword"
+	var endpoint := "signUp" if is_signup else "signInWithPassword"
 	var result := await _request_json(AUTH_URL + endpoint + "?key=" + FIREBASE_API_KEY, {"email": email, "password": password, "returnSecureToken": true})
 	if not result.ok:
 		_busy = false; _status.text = _auth_error(result.data); return
 	_store_tokens(result.data)
-	if _auth_mode == "signup":
+	if is_signup:
 		await _request_json(AUTH_URL + "sendOobCode?key=" + FIREBASE_API_KEY, {"requestType": "VERIFY_EMAIL", "idToken": _id_token})
 	_status.text = "Loading your dashboard…"
-	var profile_result := await _api("profile", {"username": username} if _auth_mode == "signup" else {})
+	var profile_result := await _api("profile", {"username": username} if is_signup else {})
 	_busy = false
 	if not profile_result.ok:
-		if _auth_mode == "signup" and profile_result.code == 409:
+		if is_signup:
 			_show_profile_setup(profile_result.error); return
 		_status.text = profile_result.error if profile_result.error != "" else "Couldn't load your profile. Try again."; return
 	if profile_result.data.get("needsUsername", false):
 		_show_profile_setup(); return
 	_profile = profile_result.data.get("profile", {}); Settings.native_profile = _profile.duplicate(true)
 	_show_dashboard()
+
+func _valid_username(value: String) -> bool:
+	var regex := RegEx.new(); regex.compile("^[A-Za-z0-9_]{3,20}$")
+	return regex.search(value) != null
 
 func _auth_error(data: Dictionary) -> String:
 	var err: Variant = data.get("error", {})
@@ -174,7 +179,7 @@ func _show_profile_setup(message := "") -> void:
 func _save_profile() -> void:
 	if _busy: return
 	var name := _username.text.strip_edges()
-	if name.length() < 3 or name.length() > 20 or not name.matches("^[A-Za-z0-9_]+$"):
+	if not _valid_username(name):
 		_status.text = "Choose a username with 3–20 letters, numbers or underscores."; return
 	_busy = true; _status.text = "Saving your profile…"
 	var result := await _api("profile", {"username": name})
