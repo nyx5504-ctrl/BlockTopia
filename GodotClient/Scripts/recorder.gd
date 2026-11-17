@@ -101,14 +101,17 @@ func stop(silent := false) -> void:
 	if not silent:
 		if last_path != "":
 			_play_btn.visible = true
-			_say("Saved video. Opening it in your video player…", 4.0)
-			OS.shell_open(last_path)
 			var saved := last_path
-			get_tree().create_timer(20.0).timeout.connect(func(): if is_instance_valid(_play_btn) and last_path == saved: _play_btn.visible = false)
+			var open_error := OS.shell_open(last_path)
+			_say("Saved video. Opening it now." if open_error == OK else "Saved video. Tap Play saved video to open it.", 4.0)
+			get_tree().create_timer(20.0).timeout.connect(_hide_play_button.bind(saved))
 		else: _say("Recording was too short to save.", 3.0)
 
 func _open_recording() -> void:
 	if last_path != "" and FileAccess.file_exists(last_path): OS.shell_open(last_path)
+
+func _hide_play_button(saved_path: String) -> void:
+	if is_instance_valid(_play_btn) and last_path == saved_path: _play_btn.visible = false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
