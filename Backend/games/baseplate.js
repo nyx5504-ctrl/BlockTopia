@@ -12,7 +12,7 @@ export class Room {
   live() { return [...this.players.values()].filter(p => p.ws); }
   send(p, m) { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(m)); }
   broadcast(m, except) { const s = JSON.stringify(m); for (const p of this.live()) if (p !== except && p.ws.readyState === 1) p.ws.send(s); }
-  pub(p) { return { id: p.id, name: p.name, color: p.color, x: r2(p.x), y: r2(p.y), z: r2(p.z), ry: r2(p.ry), anim: p.anim }; }
+  pub(p) { return { id: p.id, name: p.name, color: p.color, character: p.character || { height: 1, bodyType: "classic", bodyColor: "#f2c744" }, x: r2(p.x), y: r2(p.y), z: r2(p.z), ry: r2(p.ry), anim: p.anim }; }
   teleportToSpawn(p) { Object.assign(p, spawnPoint()); p.epoch++; p.lastT = Date.now(); this.send(p, { t: "respawn", x: p.x, y: p.y, z: p.z, e: p.epoch }); }
   // Server-side validation of client-reported movement. Returns false if the update was rejected.
   applyPos(p, m) {

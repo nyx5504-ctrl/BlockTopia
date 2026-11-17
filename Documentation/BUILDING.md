@@ -1,9 +1,9 @@
 # Building the clients
-Open `GodotClient/` in Godot 4.7.2 (it has `project.godot`). Install export templates (Editor > Manage Export Templates). Presets for all five platforms are in `export_presets.cfg`.
-Automated: GitHub > Actions > **Build clients** (Windows, Linux, macOS zip, Android debug APK, iOS Xcode project).
+Open `GodotClient/` in Godot 4.7.2 and install the matching export templates. Export presets are in `export_presets.cfg`.
 
-- **Windows**: Project > Export > Windows > `BlockTopia.exe`. On first run the client registers `blocktopia://` for the current user.
-- **Linux**: export `BlockTopia.x86_64`; first run registers the protocol (or run `register-protocol.sh`).
-- **macOS**: export zip; the workflow adds `CFBundleURLTypes` for `blocktopia`. Unsigned: right-click > Open. Needs a Mac + Apple Developer ID to sign/notarize.
-- **Android**: needs JDK 17 + Android SDK in Editor Settings. The APK builds, but the `blocktopia://` link is not wired to the app (needs a custom Gradle build intent filter). Users can open the app, sign in and launch Baseplate from its dashboard; add the intent filter to support website-to-app launch links.
-- **iOS**: needs a Mac, Xcode and an Apple Developer account. Export the Xcode project, sign, then TestFlight/App Store; put the link in `DOWNLOADS.ios`.
+- **Windows**: export `BlockTopia.exe`; first run registers the `blocktopia://` URL handler for the current user.
+- **Linux**: export `BlockTopia.x86_64`; first run registers the `blocktopia://` URL handler.
+- **macOS**: export the macOS preset. The release packaging step must add `CFBundleURLTypes` for `blocktopia` and sign the app for normal distribution.
+- **Android**: use **Build Android APK**. It builds with the `blocktopia_link` export plugin and checks the APK manifest for the `blocktopia://` intent filter before publishing the APK.
+- **Website Play**: after sign-in, Play mints a short-lived, single-use launch code. The Open app link sends that URL to the installed desktop or Android app so it can join the game.
+- **iOS**: the export preset declares the `blocktopia://` URL scheme. iOS still needs an Xcode build/signing and URL-event integration before a published iOS app can open a website Play link directly; there is no iOS release workflow yet.

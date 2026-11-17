@@ -24,6 +24,12 @@ var _token_expiry := 0
 var _profile: Dictionary = {}
 var _reaction := ""
 var _report_open := false
+var _character_preview: Avatar
+var _character_height: HSlider
+var _character_height_text: Label
+var _character_type: OptionButton
+var _character_color: ColorPickerButton
+var _character_status: Label
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -59,6 +65,7 @@ func _clear() -> void:
 	for node in _col.get_children():
 		_col.remove_child(node); node.queue_free()
 	_status = null; _email = null; _password = null; _username = null; _report_edit = null; _report_reason = null
+	_character_preview = null; _character_height = null; _character_height_text = null; _character_type = null; _character_color = null; _character_status = null
 
 func _set_status_screen(message: String) -> void:
 	_screen = "loading"; _clear()
@@ -100,13 +107,13 @@ func _show_auth(message := "") -> void:
 	var modes := HBoxContainer.new(); modes.add_theme_constant_override("separation", 8); _col.add_child(modes)
 	var mode_group := ButtonGroup.new()
 	for mode in ["login", "signup"]:
-		var b := Button.new(); b.text = "Log in" if mode == "login" else "Sign up"; b.custom_minimum_size = Vector2(0, 46)
+		var b := Button.new(); b.text = "Sign in" if mode == "login" else "Sign up"; b.custom_minimum_size = Vector2(0, 46)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.toggle_mode = true; b.button_group = mode_group; b.button_pressed = _auth_mode == mode; b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
 	if _auth_mode == "signup":
 		_username = _add_field("Username (3–20 letters, numbers or _)")
 	_email = _add_field("Email address"); _email.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS
 	_password = _add_field("Password (at least 8 characters)", true); _password.secret = true
-	_add_button("Create account" if _auth_mode == "signup" else "Log in", _submit_auth, true)
+	_add_button("Create account" if _auth_mode == "signup" else "Sign in", _submit_auth, true)
 	if _auth_mode == "login":
 		_add_button("Forgot password?", _send_password_reset)
 	_status = _add_text(message, 15, true); _status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -213,7 +220,73 @@ func _show_dashboard() -> void:
 	var by := Label.new(); by.text = "By BlockTopia"; by.modulate = Color(1, 1, 1, 0.62); info.add_child(by)
 	var desc := Label.new(); desc.text = "Explore a sunny world, meet other players, chat and play together."; desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(desc)
 	var open := Button.new(); open.text = "View game"; open.custom_minimum_size = Vector2(0, 50); open.pressed.connect(_show_details); info.add_child(open)
+	_add_character_customizer()
 	_add_text("More games are coming soon.", 15, true)
+
+func _character_data() -> Dictionary:
+	var value: Variant = _profile.get("character", {})
+	var c: Dictionary = value if value is Dictionary else {}
+	var body_type := str(c.get("bodyType", "classic"))
+	if not body_type in ["classic", "slim", "broad"]: body_type = "classic"
+	return {"height": clampf(float(c.get("height", 1.0)), 0.75, 1.25), "bodyType": body_type, "bodyColor": str(c.get("bodyColor", "#f2c744"))}
+
+func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0, 210)) -> Avatar:
+	var holder := SubViewportContainer.new(); holder.stretch = true; holder.custom_minimum_size = size
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(holder)
+	var view := SubViewport.new(); view.size = Vector2i(360, 220); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	view.world_3d = World3D.new(); holder.add_child(view)
+	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
+	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 3.8); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
+	var preview := Avatar.new(); preview.setup(str(_profile.get("username", "Player")), Color(str(_profile.get("avatarColor", "#2f6fd6"))), character, false); view.add_child(preview)
+	return preview
+
+func _add_character_customizer() -> void:
+	_add_text("Your character", 24)
+	var panel := PanelContainer.new(); panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(panel)
+	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 12); panel.add_child(body)
+	var character := _character_data()
+	_character_preview = _make_avatar_preview(body, character, Vector2(0, 210))
+	var fields := VBoxContainer.new(); fields.add_theme_constant_override("separation", 5); body.add_child(fields)
+	var height_row := HBoxContainer.new(); fields.add_child(height_row)
+	_character_height_text = Label.new(); _character_height_text.text = "Height: %d%%" % roundi(float(character.height) * 100.0); _character_height_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL; height_row.add_child(_character_height_text)
+	_character_height = HSlider.new(); _character_height.min_value = 0.75; _character_height.max_value = 1.25; _character_height.step = 0.05; _character_height.value = float(character.height); _character_height.custom_minimum_size = Vector2(0, 34); fields.add_child(_character_height)
+	_character_height.value_changed.connect(func(_v): _preview_character())
+	var type_label := Label.new(); type_label.text = "Body type"; fields.add_child(type_label)
+	_character_type = OptionButton.new()
+	for label in ["Classic", "Slim", "Broad"]: _character_type.add_item(label)
+	_character_type.select(["classic", "slim", "broad"].find(str(character.bodyType)))
+	_character_type.custom_minimum_size = Vector2(0, 46); fields.add_child(_character_type)
+	_character_type.item_selected.connect(func(_i): _preview_character())
+	var color_label := Label.new(); color_label.text = "Body color"; fields.add_child(color_label)
+	_character_color = ColorPickerButton.new(); _character_color.color = Color(str(character.bodyColor)); _character_color.custom_minimum_size = Vector2(0, 46); fields.add_child(_character_color)
+	_character_color.color_changed.connect(func(_c): _preview_character())
+	var save := Button.new(); save.text = "Save character"; save.custom_minimum_size = Vector2(0, 50); save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.2, 0.42, 0.82), Color(0.27, 0.5, 0.92), 10))
+	save.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.27, 0.5, 0.92), Color(0.32, 0.56, 1.0), 10))
+	save.pressed.connect(_save_character); body.add_child(save)
+	_character_status = Label.new(); _character_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _character_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_child(_character_status)
+
+func _read_character_controls() -> Dictionary:
+	var types := ["classic", "slim", "broad"]
+	return {"height": _character_height.value, "bodyType": types[_character_type.selected], "bodyColor": _character_color.color.to_html(false)}
+
+func _preview_character() -> void:
+	if _character_preview == null or not is_instance_valid(_character_preview): return
+	var c := _read_character_controls()
+	_character_height_text.text = "Height: %d%%" % roundi(float(c.height) * 100.0)
+	_character_preview.apply_character(c)
+
+func _save_character() -> void:
+	if _busy: return
+	_busy = true; _character_status.text = "Saving your character…"
+	var result := await _api("profile", {"character": _read_character_controls()})
+	_busy = false
+	if result.ok and result.data.has("profile"):
+		_profile = result.data.profile; Settings.native_profile = _profile.duplicate(true)
+		_character_status.text = "Character saved to your account."
+	else:
+		_character_status.text = result.error if result.error != "" else "Couldn't save your character. Try again."
 
 func _show_details() -> void:
 	var should_load_reaction := _screen != "details"

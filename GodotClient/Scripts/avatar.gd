@@ -21,23 +21,43 @@ var _land_t := 0.0          # >0 for a moment after landing: a small knee-bend d
 var _cur := {"arm_l": 0.0, "arm_r": 0.0, "leg_l": 0.0, "leg_r": 0.0, "lean": 0.0, "out_l": 0.0, "out_r": 0.0, "bob": 0.0, "head": 0.0, "twist": 0.0, "legout": 0.0}
 var _bubble: Node3D
 var _name_label: Label3D
+var _holder: Node3D
+var _display_name := ""
+var _show_name := true
+var _shirt_color := DEFAULT_SHIRT
 
-func setup(display_name: String, color: Color) -> void:
-	var holder := Node3D.new(); holder.scale = Vector3.ONE * MODEL_SCALE; holder.position = Vector3(0, 2.0 * MODEL_SCALE, 0); add_child(holder)   # rig origin is at the hips: lift so feet sit at y = 0
-	var inst: Node = MODEL.instantiate(); holder.add_child(inst)
+func setup(display_name: String, color: Color, character: Dictionary = {}, show_name := true) -> void:
+	_display_name = display_name
+	_show_name = show_name
+	_shirt_color = color if color != Color.WHITE else DEFAULT_SHIRT
+	_name_label = Label3D.new(); _name_label.text = display_name; _name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_name_label.pixel_size = 0.006; _name_label.font_size = 48; _name_label.outline_size = 14
+	_name_label.no_depth_test = true; _name_label.render_priority = 3; add_child(_name_label)
+	Settings.changed.connect(_apply_names)
+	apply_character(character)
+
+func apply_character(character: Dictionary) -> void:
+	if _holder != null and is_instance_valid(_holder): _holder.queue_free()
+	skel = null; bone.clear(); rest_g.clear(); rest_p.clear()
+	var height := clampf(float(character.get("height", 1.0)), 0.75, 1.25)
+	var body_type := str(character.get("bodyType", "classic"))
+	var width := 0.84 if body_type == "slim" else (1.16 if body_type == "broad" else 1.0)
+	var body_color := Color(str(character.get("bodyColor", "#f2c744")))
+	_holder = Node3D.new()
+	_holder.scale = Vector3(MODEL_SCALE * width, MODEL_SCALE * height, MODEL_SCALE * width)
+	_holder.position = Vector3(0, 2.0 * MODEL_SCALE * height, 0)
+	add_child(_holder)
+	var inst: Node = MODEL.instantiate(); _holder.add_child(inst)
 	skel = inst.find_child("Skeleton3D", true, false) as Skeleton3D
 	var roles := {"torso": "Torso_00", "head": "Head_01", "arm_l": "Left Arm_02", "arm_r": "Right Arm_03", "leg_l": "Left Leg_04", "leg_r": "Right Leg_05"}
 	for r in roles: bone[r] = skel.find_bone(roles[r])
 	for i in skel.get_bone_count():
 		rest_g[i] = skel.get_bone_global_rest(i).basis.orthonormalized(); rest_p[i] = skel.get_bone_rest(i).origin
-	var shirt := color if color != Color.WHITE else DEFAULT_SHIRT
-	for mi in inst.find_children("*", "MeshInstance3D", true, false): _paint(mi as MeshInstance3D, shirt)
+	for mi in inst.find_children("*", "MeshInstance3D", true, false): _paint(mi as MeshInstance3D, _shirt_color, body_color)
 	_add_face(inst)
-	_name_label = Label3D.new(); _name_label.text = display_name; _name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_name_label.position = Vector3(0, 2.85, 0); _name_label.pixel_size = 0.006; _name_label.font_size = 48; _name_label.outline_size = 14
-	_name_label.no_depth_test = true; _name_label.render_priority = 3; add_child(_name_label)
-	_name_label.visible = Settings.show_names
-	Settings.changed.connect(_apply_names)
+	if _name_label:
+		_name_label.position = Vector3(0, 2.85 * height, 0)
+		_name_label.visible = _show_name and Settings.show_names
 
 ## Sticks the smiley face on the front of the head (a flat picture on a BoneAttachment3D, so it moves with the head).
 func _rel(n: Node3D, to: Node3D) -> Transform3D:
@@ -78,10 +98,10 @@ func _add_face(inst: Node) -> void:
 	att.add_child(sp)
 
 func _apply_names() -> void:
-	if _name_label: _name_label.visible = Settings.show_names
+	if _name_label: _name_label.visible = _show_name and Settings.show_names
 
 ## Roblox "noob" colours: yellow head+arms, coloured torso, green legs (vertex colours chosen by dominant bone weight).
-func _paint(mi: MeshInstance3D, shirt: Color) -> void:
+func _paint(mi: MeshInstance3D, shirt: Color, body_color: Color) -> void:
 	var am := mi.mesh as ArrayMesh
 	if am == null or mi.skin == null: return
 	var arr := am.surface_get_arrays(0)
@@ -96,8 +116,8 @@ func _paint(mi: MeshInstance3D, shirt: Color) -> void:
 		var nm := mi.skin.get_bind_name(best)
 		if nm == "": nm = skel.get_bone_name(mi.skin.get_bind_bone(best))
 		var c := shirt
-		if nm.begins_with("Head"): c = SKIN
-		elif nm.contains("Arm"): c = SKIN
+		if nm.begins_with("Head"): c = body_color
+		elif nm.contains("Arm"): c = body_color
 		elif nm.contains("Leg"): c = PANTS
 		cols[v] = Color(minf(c.r * 1.15, 1.0), minf(c.g * 1.15, 1.0), minf(c.b * 1.15, 1.0))
 	arr[Mesh.ARRAY_COLOR] = cols

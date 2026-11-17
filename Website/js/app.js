@@ -31,7 +31,7 @@ function route() {
 
 function paintUser() {
   const p = S.profile || {};
-  $("#meAv").outerHTML = avatar(p.username, p.avatarColor, "sm").replace("<span", '<span id="meAv"');
+  $("#meAv").outerHTML = avatar(p.username, p.avatarColor, "sm", p.character).replace("<span", '<span id="meAv"');
   $("#meName").textContent = p.username || "";
   const u = auth.currentUser;
   $("#verifyBar").hidden = !u || u.emailVerified;

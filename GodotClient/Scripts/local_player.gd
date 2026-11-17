@@ -16,11 +16,14 @@ var test_move := Vector2.ZERO
 var anim := "idle"
 var rmb := false           # Roblox-style: hold right mouse to look around
 
-func setup(display_name: String, color: Color) -> void:
-	var cs := CollisionShape3D.new(); var cap := CapsuleShape3D.new(); cap.radius = 0.5; cap.height = 2.3
-	cs.shape = cap; cs.position = Vector3(0, 1.15, 0); add_child(cs)
-	avatar = Avatar.new(); add_child(avatar); avatar.setup(display_name, color)
-	pivot = Node3D.new(); pivot.position = Vector3(0, 1.8, 0); add_child(pivot)
+func setup(display_name: String, color: Color, character: Dictionary = {}) -> void:
+	var height := clampf(float(character.get("height", 1.0)), 0.75, 1.25)
+	var body_type := str(character.get("bodyType", "classic"))
+	var width := 0.84 if body_type == "slim" else (1.16 if body_type == "broad" else 1.0)
+	var cs := CollisionShape3D.new(); var cap := CapsuleShape3D.new(); cap.radius = 0.5 * width; cap.height = 2.3 * height
+	cs.shape = cap; cs.position = Vector3(0, 1.15 * height, 0); add_child(cs)
+	avatar = Avatar.new(); add_child(avatar); avatar.setup(display_name, color, character)
+	pivot = Node3D.new(); pivot.position = Vector3(0, 1.8 * height, 0); add_child(pivot)
 	arm = SpringArm3D.new(); arm.spring_length = Settings.cam_distance; arm.margin = 0.3; arm.add_excluded_object(get_rid()); pivot.add_child(arm)
 	cam = Camera3D.new(); cam.fov = Settings.fov; cam.current = true; arm.add_child(cam)
 	floor_snap_length = 0.3

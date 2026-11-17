@@ -26,6 +26,8 @@ var code := ""
 var session := ""
 var my_id := -1
 var my_name := ""
+var my_color := "#2f6fd6"
+var my_character: Dictionary = {}
 var epoch := 0
 var players := {}     # id -> {id, name, color}
 var muted := {}       # id -> true (session mute)
@@ -92,7 +94,10 @@ func _handle(txt: String) -> void:
 		"welcome":
 			state = "online"; _attempt = 0
 			my_id = int(m.id); my_name = str(m.get("name", "")); session = str(m.session); epoch = int(m.e)
-			players = {my_id: {"id": my_id, "name": my_name, "color": m.get("color", "#ffffff")}}
+			my_color = str(m.get("color", "#2f6fd6"))
+			var character_value: Variant = m.get("character", {})
+			my_character = character_value if character_value is Dictionary else {}
+			players = {my_id: {"id": my_id, "name": my_name, "color": my_color, "character": my_character}}
 			for p in m.players: players[int(p.id)] = p
 			welcomed.emit(m)
 		"join":

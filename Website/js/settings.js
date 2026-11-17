@@ -10,6 +10,9 @@ const SECTIONS = ["account", "security", "privacy", "language"];
 let stopDevices = null, devices = [];
 
 const save = patch => F.updateDoc(F.doc(db, "users", S.user.uid), patch).then(() => { Object.assign(S.profile, patch); return true; }).catch(() => { toast(t("err_generic"), "bad"); return false; });
+const characterOf = p => { const c = p?.character || {}; return { height: Math.min(1.25, Math.max(0.75, Number(c.height) || 1)), bodyType: ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic", bodyColor: safeColor(c.bodyColor || "#f2c744") }; };
+function readCharacterControls() { return { height: Number($("#characterHeight").value), bodyType: $("#characterBodyType").value, bodyColor: safeColor($("#characterBodyColor").value) }; }
+function paintCharacterPreview() { const c = readCharacterControls(); $("#characterHeightValue").textContent = Math.round(c.height * 100) + "%"; $("#characterPreview").innerHTML = avatar(S.profile?.username, S.profile?.avatarColor, "lg", c); }
 
 export function applyTheme(theme) {
   const th = theme === "light" ? "light" : "dark";
@@ -34,7 +37,12 @@ function startDevices() {
 
 export function renderAccount() {
   const p = S.profile || {}, u = auth.currentUser; if (!u) return;
-  $("#setAv").outerHTML = avatar(p.username, p.avatarColor, "lg").replace("<span", '<span id="setAv"');
+  const character = characterOf(p);
+  $("#setAv").outerHTML = avatar(p.username, p.avatarColor, "lg", character).replace("<span", '<span id="setAv"');
+  $("#characterHeight").value = String(character.height);
+  $("#characterBodyType").value = character.bodyType;
+  $("#characterBodyColor").value = character.bodyColor;
+  paintCharacterPreview();
   $("#setName").textContent = p.username || "";
   $("#setUser").textContent = p.username || "";
   $("#setEmail").textContent = u.email || "";
@@ -88,7 +96,15 @@ export function initSettings() {
 
   $("#resend2").onclick = () => A.sendEmailVerification(auth.currentUser).then(() => toast(t("sent_ok")), e => toast(t(errKey(e)), "bad"));
 
-  // avatar color
+  // Character controls preview locally and save the shared profile for web and app.
+  $("#characterEditor").addEventListener("input", paintCharacterPreview);
+  $("#characterEditor").addEventListener("change", async () => {
+    const character = readCharacterControls();
+    if (await save({ character })) {
+      renderAccount(); document.dispatchEvent(new Event("profilechange")); toast(t("saved"));
+    }
+  });
+  // Outfit color
   $("#swatches").addEventListener("click", async e => {
     const b = e.target.closest("[data-color]"); if (!b) return;
     if (await save({ avatarColor: b.dataset.color })) { renderAccount(); document.dispatchEvent(new Event("profilechange")); toast(t("saved")); }

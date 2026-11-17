@@ -104,7 +104,7 @@ func _on_welcome(m: Dictionary) -> void:
 	for id in remotes.keys(): remotes[id].node.queue_free()
 	remotes.clear()
 	if local == null:
-		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff")))); local.touch = touch
+		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch
 	local.teleport(Vector3(m.x, m.y, m.z))
 	for p in m.players: _add_remote(p)
 	chat.system("Welcome to Baseplate, %s! %s" % [Net.my_name, "Drag the right side of the screen to look around." if Settings.is_mobile() else "Hold the right mouse button to look around. Click a name in the player list for options."])
@@ -113,7 +113,7 @@ func _on_welcome(m: Dictionary) -> void:
 func _add_remote(p: Dictionary) -> void:
 	var id := int(p.id)
 	if id == Net.my_id or remotes.has(id): return
-	var av := Avatar.new(); add_child(av); av.setup(str(p.name), Color(str(p.get("color", "#ffffff"))))
+	var av := Avatar.new(); add_child(av); av.setup(str(p.name), Color(str(p.get("color", "#ffffff"))), p.get("character", {}))
 	var pos := Vector3(p.x, p.y, p.z); av.position = pos
 	remotes[id] = {"node": av, "target": pos, "ry": float(p.get("ry", 0.0)), "speed": 0.0}
 	chat.system("%s joined." % p.name)

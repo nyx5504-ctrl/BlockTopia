@@ -11,7 +11,7 @@ export default {
  "alerts_empty": "No notifications yet.",
  "already_friends": "Friends",
  "auth_tag": "Play and hang out in a shared world.",
- "avatar_color": "Avatar color",
+ "avatar_color": "Outfit color",
  "back_login": "Back to log in",
  "busy": "Please wait…",
  "by": "By {name}",
