@@ -54,6 +54,10 @@ const server = http.createServer(async (req, res) => {
       const { game, action } = body;
       if (game !== "baseplate") return out(400, { error: "unknown game" });
       if (tooMany(feedbackHits, u.uid, 20, 60000)) return out(429, { error: "Please wait before sending more game feedback." });
+      if (action === "get-reaction") {
+        const reaction = await store.getGameReaction(u.uid, game);
+        return out(200, { reaction });
+      }
       if (action === "reaction") {
         if (!["like", "dislike"].includes(body.reaction)) return out(400, { error: "Choose like or dislike." });
         const reaction = await store.toggleGameReaction(u.uid, game, body.reaction);
