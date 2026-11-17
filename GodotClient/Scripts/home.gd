@@ -266,7 +266,9 @@ func _submit_game_report() -> void:
 	if details == "":
 		_status.text = "Add a short reason for the report."; return
 	var reasons := ["inappropriate_content", "abuse", "spam", "other"]
-	var reason := reasons[_report_reason.selected] if _report_reason != null else "other"
+	var reason: String = "other"
+	if _report_reason != null:
+		reason = str(reasons[_report_reason.selected])
 	_busy = true; _status.text = "Sending your report…"
 	var result := await _api("game-feedback", {"game": "baseplate", "action": "report", "reason": reason, "details": details})
 	_busy = false
