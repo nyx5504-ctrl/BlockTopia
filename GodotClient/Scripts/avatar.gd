@@ -43,6 +43,8 @@ func apply_character(character: Dictionary) -> void:
 	var body_type := str(character.get("bodyType", "classic"))
 	var width := 0.84 if body_type == "slim" else (1.16 if body_type == "broad" else 1.0)
 	var body_color := Color(str(character.get("bodyColor", "#f2c744")))
+	var part_values: Variant = character.get("parts", {})
+	var parts: Dictionary = part_values if part_values is Dictionary else {}
 	_holder = Node3D.new()
 	_holder.scale = Vector3(MODEL_SCALE * width, MODEL_SCALE * height, MODEL_SCALE * width)
 	_holder.position = Vector3(0, 2.0 * MODEL_SCALE * height, 0)
@@ -53,78 +55,89 @@ func apply_character(character: Dictionary) -> void:
 	for r in roles: bone[r] = skel.find_bone(roles[r])
 	for i in skel.get_bone_count():
 		rest_g[i] = skel.get_bone_global_rest(i).basis.orthonormalized(); rest_p[i] = skel.get_bone_rest(i).origin
-	for mi in inst.find_children("*", "MeshInstance3D", true, false): _paint(mi as MeshInstance3D, _shirt_color, body_color)
-	_add_face(inst)
+	for mi in inst.find_children("*", "MeshInstance3D", true, false): _paint(mi as MeshInstance3D, parts, body_color)
 	if _name_label:
 		_name_label.position = Vector3(0, 2.85 * height, 0)
 		_name_label.visible = _show_name and Settings.show_names
 
-## Sticks the smiley face on the front of the head (a flat picture on a BoneAttachment3D, so it moves with the head).
-func _rel(n: Node3D, to: Node3D) -> Transform3D:
-	var t := Transform3D.IDENTITY; var cur: Node = n
-	while cur != null and cur != to:
-		if cur is Node3D: t = (cur as Node3D).transform * t
-		cur = cur.get_parent()
-	return t
-
-func _add_face(inst: Node) -> void:
-	var hb: int = bone.head
-	var lo := Vector3(INF, INF, INF); var hi := Vector3(-INF, -INF, -INF); var found := false
-	for mi in inst.find_children("*", "MeshInstance3D", true, false):
-		var m := mi as MeshInstance3D
-		if m.mesh == null or m.skin == null: continue
-		var arr := (m.mesh as ArrayMesh).surface_get_arrays(0)
-		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]; var wts: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
-		var per := bones.size() / verts.size(); var xf := _rel(m, skel)
-		for v in verts.size():
-			var best := 0; var bw := -1.0
-			for k in per:
-				if wts[v * per + k] > bw: bw = wts[v * per + k]; best = bones[v * per + k]
-			var nm := m.skin.get_bind_name(best)
-			if nm == "": nm = skel.get_bone_name(m.skin.get_bind_bone(best))
-			if not nm.begins_with("Head"): continue
-			var p := xf * verts[v]; found = true
-			lo = Vector3(minf(lo.x, p.x), minf(lo.y, p.y), minf(lo.z, p.z)); hi = Vector3(maxf(hi.x, p.x), maxf(hi.y, p.y), maxf(hi.z, p.z))
-	if not found: return
-	var rest := skel.get_bone_global_rest(hb); var B := rest.basis.orthonormalized()
-	var centre := Vector3((lo.x + hi.x) * 0.5, lo.y - 0.01, lo.z + (hi.z - lo.z) * 0.5)             # middle of the front face (skeleton -Y is forward)
-	var local := rest.affine_inverse() * centre
-	var n := B.inverse() * Vector3(0, -1, 0); var up := B.inverse() * Vector3(0, 0, 1)
-	var att := BoneAttachment3D.new(); att.bone_name = skel.get_bone_name(hb); skel.add_child(att)
-	var sp := Sprite3D.new(); sp.texture = AvatarChip.face_texture(); sp.shaded = false; sp.double_sided = false
-	sp.pixel_size = (hi.x - lo.x) * 0.9 / 128.0
-	sp.transform = Transform3D(Basis.looking_at(-n, up), local)
-	att.add_child(sp)
-
 func _apply_names() -> void:
 	if _name_label: _name_label.visible = _show_name and Settings.show_names
 
-## Roblox "noob" colours: yellow head+arms, coloured torso, green legs (vertex colours chosen by dominant bone weight).
-func _paint(mi: MeshInstance3D, shirt: Color, body_color: Color) -> void:
+## Apply per-part colours and size directly to the skinned mesh vertices.
+func _part_for_bone(name: String) -> String:
+	if name.begins_with("Head"): return "head"
+	if name.begins_with("Torso"): return "torso"
+	if name.contains("Left Arm"): return "leftArm"
+	if name.contains("Right Arm"): return "rightArm"
+	if name.contains("Left Leg"): return "leftLeg"
+	if name.contains("Right Leg"): return "rightLeg"
+	return "torso"
+
+func _paint(mi: MeshInstance3D, parts: Dictionary, legacy_skin: Color) -> void:
 	var am := mi.mesh as ArrayMesh
 	if am == null or mi.skin == null: return
 	var arr := am.surface_get_arrays(0)
 	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]; var wts: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+	if verts.is_empty() or bones.is_empty() or wts.is_empty(): return
 	var per := bones.size() / verts.size()
-	var cols := PackedColorArray(); cols.resize(verts.size())
+	var roles := PackedStringArray(); roles.resize(verts.size())
+	var bounds := {}
 	for v in verts.size():
 		var best := 0; var bw := -1.0
 		for k in per:
 			if wts[v * per + k] > bw: bw = wts[v * per + k]; best = bones[v * per + k]
 		var nm := mi.skin.get_bind_name(best)
 		if nm == "": nm = skel.get_bone_name(mi.skin.get_bind_bone(best))
-		var c := shirt
-		if nm.begins_with("Head"): c = body_color
-		elif nm.contains("Arm"): c = body_color
-		elif nm.contains("Leg"): c = PANTS
-		cols[v] = Color(minf(c.r * 1.15, 1.0), minf(c.g * 1.15, 1.0), minf(c.b * 1.15, 1.0))
+		var role := _part_for_bone(nm); roles[v] = role
+		var bb: AABB = bounds.get(role, AABB(verts[v], Vector3.ZERO))
+		bounds[role] = bb.expand(verts[v])
+	var sized := verts.duplicate()
+	var cols := PackedColorArray(); cols.resize(verts.size())
+	for v in verts.size():
+		var role := roles[v]
+		var spec: Dictionary = parts.get(role, {})
+		var fallback := legacy_skin if role in ["head", "leftArm", "rightArm"] else (DEFAULT_SHIRT if role == "torso" else PANTS)
+		var color := Color(str(spec.get("color", fallback.to_html(false))))
+		var scale := clampf(float(spec.get("size", 1.0)), 0.7, 1.3)
+		var bb: AABB = bounds[role]; var centre := bb.position + bb.size * 0.5
+		sized[v] = centre + (verts[v] - centre) * scale
+		cols[v] = Color(minf(color.r * 1.15, 1.0), minf(color.g * 1.15, 1.0), minf(color.b * 1.15, 1.0))
+	arr[Mesh.ARRAY_VERTEX] = sized
 	arr[Mesh.ARRAY_COLOR] = cols
 	var nm2 := ArrayMesh.new(); nm2.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	var mat := am.surface_get_material(0).duplicate() as StandardMaterial3D
 	mat.vertex_color_use_as_albedo = true; mat.roughness = 1.0; mat.metallic_specular = 0.0
+	if str(mi.name).to_lower().contains("head"):
+		_replace_face_texture(mat)
 	nm2.surface_set_material(0, mat); mi.mesh = nm2
+
+## Replace the model's baked face in its head atlas; no floating Sprite3D is added.
+func _replace_face_texture(mat: StandardMaterial3D) -> void:
+	if mat.albedo_texture == null: return
+	var image := mat.albedo_texture.get_image()
+	if image == null or image.is_empty(): return
+	var w := image.get_width(); var h := image.get_height()
+	var x0 := int(w * 0.25); var x1 := int(w * 0.52)
+	var y0 := int(h * 0.20); var y1 := int(h * 0.82)
+	var min_x := x1; var min_y := y1; var max_x := x0; var max_y := y0
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			var px := image.get_pixel(x, y)
+			if px.a > 0.5 and px.r < 0.12 and px.g < 0.12 and px.b < 0.12:
+				min_x = mini(min_x, x); max_x = maxi(max_x, x); min_y = mini(min_y, y); max_y = maxi(max_y, y)
+	if max_x < min_x or max_y < min_y: return
+	var pad := maxi(3, int(w * 0.004))
+	var rx := maxi(0, min_x - pad); var ry := maxi(0, min_y - pad)
+	var region := Rect2i(rx, ry, mini(w, max_x + pad + 1) - rx, mini(h, max_y + pad + 1) - ry)
+	var sample_x := maxi(0, region.position.x - 2); var sample_y := clampi(region.position.y + region.size.y / 2, 0, h - 1)
+	var background := image.get_pixel(sample_x, sample_y)
+	image.fill_rect(region, background)
+	var face := AvatarChip.face_image(128)
+	face.flip_y()
+	face.resize(region.size.x, region.size.y, Image.INTERPOLATE_LANCZOS)
+	image.blend_rect(face, Rect2i(Vector2i.ZERO, face.get_size()), region.position)
+	mat.albedo_texture = ImageTexture.create_from_image(image)
 
 # ---- bone helpers (skeleton space is Z-up; character forward (+Z) is skeleton -Y) ----
 func _pose(b: int, r_skel: Basis) -> void:
