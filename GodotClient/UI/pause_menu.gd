@@ -72,6 +72,8 @@ func _ready() -> void:
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: resume.add_theme_color_override(c, Color(0.05, 0.05, 0.06))
 	get_viewport().size_changed.connect(_fit); _fit()
 	Net.welcomed.connect(func(_m): _load_customization_controls())
+	Net.character_updated.connect(func(_c): if visible and pages["Players"].visible: _refresh_players())
+	Net.player_character_changed.connect(func(_id, _c): if visible and pages["Players"].visible: _refresh_players())
 	Net.character_save_result.connect(_on_character_save_result)
 	Net.player_joined.connect(func(_p): _on_roster())
 	Net.player_left.connect(func(_i, _n): _on_roster())
@@ -113,7 +115,7 @@ func _customization_page(parent: Node) -> void:
 	var page := VBoxContainer.new(); page.add_theme_constant_override("separation", 10); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(page); pages["Customization"] = page
 	var hint := Label.new(); hint.text = "Change your character, then save it to your BlockTopia profile."; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.modulate = Color(1, 1, 1, 0.65); page.add_child(hint)
 	var holder := SubViewportContainer.new(); holder.stretch = true; holder.custom_minimum_size = Vector2(0, 180); holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.add_child(holder)
-	var view := SubViewport.new(); view.size = Vector2i(360, 190); view.transparent_bg = true; view.world_3d = World3D.new(); view.render_target_update_mode = SubViewport.UPDATE_ALWAYS; holder.add_child(view)
+	var view := SubViewport.new(); view.size = Vector2i(360, 190); view.transparent_bg = true; view.world_3d = World3D.new(); view.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE; holder.add_child(view)
 	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
 	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 3.8); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
 	custom_preview = Avatar.new(); custom_preview.setup(Net.my_name if Net.my_name != "" else "Player", Color(Net.my_color), Net.my_character, false); view.add_child(custom_preview)
