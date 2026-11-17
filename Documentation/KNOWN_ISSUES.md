@@ -8,7 +8,7 @@
 
 **Limits**
 - Movement is client-reported but server-validated (speed, bounds, vertical speed, teleport correction). It is not a full server physics simulation, so subtle cheats (e.g. flying slowly) are not fully prevented.
-- Score = 1 per 10 s connected. **Wins** stay 0: Baseplate has no win condition yet.
+- Timed score awards and score columns have been removed; Baseplate has no win condition or score-based leaderboard.
 - Profile "friends only" visibility, request permissions and join permissions are enforced in the UI/server logic; Firestore rules still let signed-in users read other user docs.
 - Chat filter is a starter word list plus pattern checks. Extend `Backend/chat/filter.js` and expect to tune it. It cannot catch everything.
 - Email verification is sent but not required to play. Password reset is Firebase's emailed link.
