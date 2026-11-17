@@ -91,7 +91,15 @@ export function initSettings() {
 
   $("#resend2").onclick = () => A.sendEmailVerification(auth.currentUser).then(() => toast(t("sent_ok")), e => toast(t(errKey(e)), "bad"));
 
-  // avatar color
+  // Character controls preview locally and save the shared profile for web and app.
+  $("#characterEditor").addEventListener("input", paintCharacterPreview);
+  $("#characterEditor").addEventListener("change", async () => {
+    const character = readCharacterControls();
+    if (await save({ character })) {
+      renderAccount(); document.dispatchEvent(new Event("profilechange")); toast(t("saved"));
+    }
+  });
+  // Outfit color
   $("#swatches").addEventListener("click", async e => {
     const b = e.target.closest("[data-color]"); if (!b) return;
     if (await save({ avatarColor: b.dataset.color })) { renderAccount(); document.dispatchEvent(new Event("profilechange")); toast(t("saved")); }
