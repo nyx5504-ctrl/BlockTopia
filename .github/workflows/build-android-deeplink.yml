@@ -35,37 +35,13 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOT
           done
-      - name: Gradle build template + blocktopia:// intent filter
+      - name: Gradle build template (the blocktopia:// link comes from the addons/blocktopia_link export plugin)
         run: |
           cd GodotClient
           godot --headless --import || true
           mkdir -p android && cp -r ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip android/ && cd android && unzip -q -o android_source.zip -d build && rm android_source.zip && cd ..
           echo "${GODOT_VERSION}.stable" > android/.build_version
           touch android/build/.gdignore
-          python3 - <<'PY'
-          import glob, sys
-          cands = [p for p in glob.glob("android/build/**/AndroidManifest.xml", recursive=True) if "android.intent.action.MAIN" in open(p, encoding="utf8").read()]
-          print("manifest candidates:", cands)
-          if not cands:
-              print("tree:"); import os
-              for r, d, f in os.walk("android/build"):
-                  if r.count("/") < 4: print(r, f[:8])
-              sys.exit("no manifest with a MAIN intent-filter found")
-          p = cands[0]
-          s = open(p, encoding="utf8").read()
-          if 'android:scheme="blocktopia"' not in s:
-              f = '''<intent-filter>
-                      <action android:name="android.intent.action.VIEW" />
-                      <category android:name="android.intent.category.DEFAULT" />
-                      <category android:name="android.intent.category.BROWSABLE" />
-                      <data android:scheme="blocktopia" />
-                  </intent-filter>
-                  '''
-              i = s.index("<intent-filter>")
-              s = s[:i] + f + s[i:]
-              open(p, "w", encoding="utf8").write(s)
-          print("manifest patched:", p)
-          PY
           sed -i 's/gradle_build\/use_gradle_build=false/gradle_build\/use_gradle_build=true/' export_presets.cfg
           grep -n "use_gradle_build" export_presets.cfg
       - name: Export APK
