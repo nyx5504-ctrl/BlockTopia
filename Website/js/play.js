@@ -40,7 +40,7 @@ function downloadsHtml() {
 }
 
 // Opens the installed app through its blocktopia:// handler. No package name: if the app is missing Chrome comes back here instead of opening Google Play.
-function androidIntent(q) { return `intent://${q}#Intent;scheme=blocktopia;S.browser_fallback_url=${encodeURIComponent(location.href.split("#")[0])};end`; }
+function androidIntent(q) { return `intent://${q}#Intent;scheme=blocktopia;S.browser_fallback_url=${encodeURIComponent(location.href.split("#")[0] + "#app")};end`; }
 
 function ready(link, opts) {
   clearInterval(timer);
@@ -56,6 +56,8 @@ function ready(link, opts) {
     <span class="exp" id="playExp"></span>
     ${downloadsHtml()}`);
   $("#playBody").dataset.link = link; $("#playBody").dataset.opts = JSON.stringify(opts || {});
+  // Phones: tapping the button also copies the link, so if the app opens on its home screen instead of the game it joins from the clipboard.
+  if (mobile) { try { $("#openApp")?.addEventListener("click", () => navigator.clipboard?.writeText(link).catch(() => {})); navigator.clipboard?.writeText(link).catch(() => {}); } catch {} }
   const tick = () => {
     const s = Math.max(0, Math.round((end - Date.now()) / 1000)), e = $("#playExp");
     if (!e) return clearInterval(timer);
@@ -97,14 +99,6 @@ async function start(opts, my) {
   if (!res.ok || !data.code) return fail("err_generic", data.error, opts);
   const link = `blocktopia://play?game=baseplate&code=${encodeURIComponent(data.code)}&ws=${encodeURIComponent(data.ws)}`;
   ready(link, opts);
-  // Android: an intent:// link opens the installed app directly (the app must be the build with the link support); if it isn't installed Chrome just stays here.
-  if (platform() === "android") {
-    const q = link.slice("blocktopia://".length);
-    const intent = androidIntent(q);
-    $("#playBody").dataset.intent = intent;
-    location.href = intent;
-    return;
-  }
   // Browsers only allow opening an app right after a click. If the server was already awake this works; otherwise the big button does it.
   const p = platform();
   if (p !== "android" && p !== "ios" && Date.now() - t0 < 4000) location.href = link;

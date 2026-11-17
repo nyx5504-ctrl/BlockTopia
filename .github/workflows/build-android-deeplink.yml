@@ -76,7 +76,7 @@ jobs:
           AAPT2=$(ls -d $ANDROID_HOME/build-tools/*/aapt2 | tail -1)
           $AAPT2 dump xmltree --file AndroidManifest.xml Builds/Android/BlockTopia.apk > manifest.txt
           grep -n "scheme\|MAIN\|VIEW\|package=" manifest.txt | head -20
-          grep -q "blocktopia" manifest.txt || { echo "::error::The APK has no blocktopia:// intent filter"; cat manifest.txt | head -80; exit 1; }
+          grep -E "scheme.*=\"blocktopia\"" manifest.txt >/dev/null || { echo "::error::The APK has no blocktopia:// intent filter"; cat manifest.txt | head -80; exit 1; }
       - uses: actions/upload-artifact@v4
         with: { name: android-apk-deeplink, path: Builds/Android/BlockTopia.apk }
       - name: Publish to release v1.0

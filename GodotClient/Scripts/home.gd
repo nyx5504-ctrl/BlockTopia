@@ -26,9 +26,9 @@ func _ready() -> void:
 	_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _desc.modulate = Color(1, 1, 1, 0.68); _col.add_child(_desc)
 	var web := Button.new(); web.text = "Open the BlockTopia website"; web.custom_minimum_size = Vector2(0, 54)
 	web.pressed.connect(func(): OS.shell_open(Settings.WEBSITE_URL)); _col.add_child(web)
-	if Settings.is_mobile():
+	if true:                                              # every platform: backup way in if the Play button can't open the app
 		var sep := HSeparator.new(); sep.modulate = Color(1, 1, 1, 0.25); _col.add_child(sep)
-		var h := Label.new(); h.text = "Pressed Play on the website? Come back here and your game starts by itself. If it doesn't, tap the button below."
+		var h := Label.new(); h.text = "Pressed Play on the website? Your game starts by itself. If it doesn't: press Copy link on the website, come back here and press the button below."
 		h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; h.modulate = Color(1, 1, 1, 0.6); h.add_theme_font_size_override("font_size", 16); _col.add_child(h)
 		var clip := Button.new(); clip.text = "Join from clipboard"; clip.custom_minimum_size = Vector2(0, 54); clip.pressed.connect(func(): _try_clipboard(true)); _col.add_child(clip)
 		link_in = LineEdit.new(); link_in.placeholder_text = "or paste the blocktopia:// link here"; link_in.custom_minimum_size = Vector2(0, 50); _col.add_child(link_in)
@@ -56,7 +56,6 @@ func _try_clipboard(manual := false) -> void:
 	var au := Settings.android_launch_uri()                  # app already open when the website's Play button was pressed
 	if au != "" and Settings.parse_link(au):
 		status.text = "Joining..."; get_tree().change_scene_to_file("res://Scenes/Baseplate.tscn"); return
-	if not manual and not Settings.is_mobile(): return
 	var c := DisplayServer.clipboard_get().strip_edges()
 	if not c.begins_with("blocktopia://"):
 		if manual: status.text = "No launch link on the clipboard. Press Play on the website first."
