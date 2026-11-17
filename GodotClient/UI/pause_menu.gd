@@ -107,7 +107,7 @@ func _players_page(parent: Node) -> void:
 	var container := SubViewportContainer.new(); container.stretch = true; container.custom_minimum_size = Vector2(0, 150); container.size_flags_horizontal = Control.SIZE_EXPAND_FILL; preview_stack.add_child(container)
 	var view := SubViewport.new(); view.size = Vector2i(320, 180); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS; container.add_child(view); self_preview_view = view
 	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
-	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 5.4); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
+	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 3.8); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
 	_refresh_self_preview()
 	players_list = VBoxContainer.new(); players_list.add_theme_constant_override("separation", 8); players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.add_child(players_list)
 
