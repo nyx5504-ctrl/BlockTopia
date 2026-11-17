@@ -125,9 +125,11 @@ func _on_chat_bubble(id: int, _n: String, text: String) -> void:
 
 func _on_character_updated(character: Dictionary) -> void:
 	if local != null and local.avatar != null: local.avatar.apply_character(character)
+	if plist != null: plist.refresh()
 
 func _on_player_character_changed(id: int, character: Dictionary) -> void:
 	if remotes.has(id): remotes[id].node.apply_character(character)
+	if plist != null: plist.refresh()
 
 func _on_left(id: int, pname: String) -> void:
 	if remotes.has(id): remotes[id].node.queue_free(); remotes.erase(id)
