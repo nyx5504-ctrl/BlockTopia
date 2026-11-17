@@ -127,9 +127,12 @@ func _replace_face_texture(mat: StandardMaterial3D) -> void:
 			if px.a > 0.5 and px.r < 0.12 and px.g < 0.12 and px.b < 0.12:
 				min_x = mini(min_x, x); max_x = maxi(max_x, x); min_y = mini(min_y, y); max_y = maxi(max_y, y)
 	if max_x < min_x or max_y < min_y: return
-	var pad := maxi(3, int(w * 0.004))
-	var rx := maxi(0, min_x - pad); var ry := maxi(0, min_y - pad)
-	var region := Rect2i(rx, ry, mini(w, max_x + pad + 1) - rx, mini(h, max_y + pad + 1) - ry)
+	# Enlarge the new face to use most of the model's front-face UV panel.
+	var target_size := maxi(1, int(mini(w, h) * 0.17))
+	var cx := (min_x + max_x) / 2; var cy := (min_y + max_y) / 2
+	var rx := clampi(cx - target_size / 2, x0, maxi(x0, x1 - target_size))
+	var ry := clampi(cy - target_size / 2, y0, maxi(y0, y1 - target_size))
+	var region := Rect2i(rx, ry, mini(target_size, w - rx), mini(target_size, h - ry))
 	var sample_x := maxi(0, region.position.x - 2); var sample_y := clampi(region.position.y + region.size.y / 2, 0, h - 1)
 	var background := image.get_pixel(sample_x, sample_y)
 	image.fill_rect(region, background)
