@@ -37,7 +37,10 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOT
           done
-          cd GodotClient && godot --headless --import || true
+          cd GodotClient
+          set -o pipefail
+          godot --headless --import 2>&1 | tee /tmp/godot-import.log
+          if grep -Eq 'SCRIPT ERROR:|Parse Error:|ERROR: Failed to load script' /tmp/godot-import.log; then exit 1; fi
           mkdir -p ../Builds/Android && godot --headless --export-debug "Android" ../Builds/Android/BlockTopia.apk
       - uses: actions/upload-artifact@v4
         with: { name: android-apk, path: Builds/Android/BlockTopia.apk }
