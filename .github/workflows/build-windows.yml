@@ -1,7 +1,15 @@
 name: Build Windows
-on: { workflow_dispatch: {} }
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "New app version tag (increase it for each published update)"
+        required: true
+        default: "v1.1.0"
 permissions: { contents: write }
-env: { GODOT_VERSION: "4.7.2" }
+env:
+  GODOT_VERSION: "4.7.2"
+  RELEASE_TAG: ${{ inputs.release_tag || 'v1.1.0' }}
 jobs:
   windows:
     runs-on: ubuntu-latest
@@ -16,6 +24,7 @@ jobs:
       - name: Export Windows (release build, no DEBUG label)
         run: |
           cd GodotClient
+          sed -i "s|^config/version=.*|config/version=\"$RELEASE_TAG\"|" project.godot
           set -o pipefail
           godot --headless --import 2>&1 | tee /tmp/godot-import.log
           if grep -Eq 'SCRIPT ERROR:|Parse Error:|ERROR: Failed to load script' /tmp/godot-import.log; then exit 1; fi
@@ -27,6 +36,8 @@ jobs:
         run: cd Builds/Windows && zip -q ../../BlockTopia-Windows.zip BlockTopia.exe
       - uses: actions/upload-artifact@v4
         with: { name: windows-zip, path: BlockTopia-Windows.zip }
-      - name: Publish to release v1.0 (replaces the old zip)
+      - name: Publish versioned Windows release
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-        run: gh release upload v1.0 BlockTopia-Windows.zip --clobber
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "BlockTopia $RELEASE_TAG" --notes "BlockTopia desktop and Android app release."
+          gh release upload "$RELEASE_TAG" BlockTopia-Windows.zip --clobber
