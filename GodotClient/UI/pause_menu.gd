@@ -1,0 +1,256 @@
+class_name PauseMenu
+extends CanvasLayer
+## Roblox-style game menu: tabs on top (Players / Report / Settings / Help), Reset Character / Leave / Resume at the bottom.
+## Players: add friend, mute, block, report. Report: pick a player and a reason, add details, send to the BlockTopia team.
+## Settings: graphics, audio, camera, touch, fullscreen, FPS counter, name tags, reset. The header shows players, ping and FPS.
+## Keys while the menu is open: Esc = resume, R = reset character, L = leave game (press twice).
+signal leave_requested
+signal respawn_requested
+const REPORT_REASONS := [["Inappropriate chat", "inappropriate_chat"], ["Harassment or bullying", "abuse"], ["Inappropriate username", "inappropriate_name"], ["Cheating or exploiting", "cheating"], ["Spam", "spam"], ["Something else", "other"]]
+const TABS := ["Players", "Report", "Settings", "Help"]
+var root: Control
+var panel: PanelContainer
+var pages := {}
+var tab_btns := {}
+var players_list: VBoxContainer
+var info_label: Label
+var _stats_t := 0.0
+var leave_btn: Button
+var _leave_armed := false
+var _leave_token := 0
+var _mobile := false
+# report page
+var rep_player: OptionButton
+var rep_ids: Array = []
+var rep_reason: OptionButton
+var rep_details: TextEdit
+var rep_status: Label
+var rep_send: Button
+var _rep_pending := -1
+
+func _ready() -> void:
+	layer = 10; visible = false; _mobile = Settings.is_mobile()
+	root = Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
+	var dim := ColorRect.new(); dim.color = Color(0, 0, 0, 0.58); dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.add_child(dim)
+	panel = PanelContainer.new(); panel.set_anchors_preset(Control.PRESET_CENTER); root.add_child(panel)
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.07, 0.07, 0.078, 0.98), Color(0.24, 0.24, 0.27), 16))
+	var host := MarginContainer.new(); for s in ["left", "right", "top", "bottom"]: host.add_theme_constant_override("margin_" + s, 14 if _mobile else 18)
+	panel.add_child(host)
+	var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 12); host.add_child(stack)
+	# header
+	var head := HBoxContainer.new(); head.add_theme_constant_override("separation", 10); stack.add_child(head)
+	var title := Label.new(); title.text = "BlockTopia"; title.add_theme_font_size_override("font_size", 26); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; head.add_child(title)
+	info_label = Label.new(); info_label.modulate = Color(1, 1, 1, 0.55); info_label.add_theme_font_size_override("font_size", 15); head.add_child(info_label)
+	var x := Button.new(); x.text = "X"; x.custom_minimum_size = Vector2(44, 44); x.pressed.connect(close); head.add_child(x)
+	# tabs
+	var tabs := HBoxContainer.new(); tabs.add_theme_constant_override("separation", 6); stack.add_child(tabs)
+	var group := ButtonGroup.new()
+	for t in TABS:
+		var b := Button.new(); b.text = t; b.toggle_mode = true; b.button_group = group; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.custom_minimum_size = Vector2(0, 50 if _mobile else 44); b.add_theme_font_size_override("font_size", 16 if _mobile else 18); b.clip_text = true
+		var on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95)); b.add_theme_stylebox_override("pressed", on); b.add_theme_stylebox_override("hover_pressed", on)
+		b.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06)); b.add_theme_color_override("font_hover_pressed_color", Color(0.05, 0.05, 0.06))
+		b.pressed.connect(show_page.bind(t)); tabs.add_child(b); tab_btns[t] = b
+	# pages
+	var area := ScrollContainer.new(); area.size_flags_vertical = Control.SIZE_EXPAND_FILL; area.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; stack.add_child(area)
+	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; area.add_child(pv)
+	_players_page(pv); _report_page(pv); _settings_page(pv); _help_page(pv)
+	# footer (Roblox order: Reset Character, Leave, Resume)
+	var foot := HBoxContainer.new(); foot.add_theme_constant_override("separation", 8); stack.add_child(foot)
+	_foot_btn(foot, "Reset Character", "R", func(): respawn_requested.emit(); close())
+	leave_btn = _foot_btn(foot, "Leave Game", "L", _on_leave)
+	var red := ThemeBuilder.box(Color(0.5, 0.13, 0.13), Color(0.68, 0.2, 0.2)); leave_btn.add_theme_stylebox_override("normal", red)
+	leave_btn.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.62, 0.16, 0.16), Color(0.8, 0.25, 0.25))); leave_btn.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.42, 0.1, 0.1), Color(0.68, 0.2, 0.2)))
+	var resume := _foot_btn(foot, "Resume", "Esc", close)
+	var white := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95)); resume.add_theme_stylebox_override("normal", white); resume.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(1, 1, 1), Color(1, 1, 1)))
+	resume.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.8, 0.8, 0.83), Color(0.8, 0.8, 0.83)))
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: resume.add_theme_color_override(c, Color(0.05, 0.05, 0.06))
+	get_viewport().size_changed.connect(_fit); _fit()
+	Net.player_joined.connect(func(_p): _on_roster())
+	Net.player_left.connect(func(_i, _n): _on_roster())
+	Net.mute_changed.connect(func(_i, _o): if visible: _refresh_players())
+	Net.scores_changed.connect(func(): if visible and pages["Players"].visible: _refresh_players())
+	Net.report_done.connect(_on_report_done)
+	show_page("Players")
+
+func _foot_btn(parent: Node, text: String, key: String, cb: Callable) -> Button:
+	var b := Button.new(); b.text = text if _mobile else "%s   [%s]" % [text, key]; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.custom_minimum_size = Vector2(0, 58 if _mobile else 50); b.clip_text = true; b.pressed.connect(cb); parent.add_child(b); return b
+
+func _fit() -> void:
+	var vs := get_viewport().get_visible_rect().size
+	var w := clampf(vs.x * 0.94, 320.0, 780.0); var h := clampf(vs.y * 0.92, 300.0, 660.0)
+	panel.custom_minimum_size = Vector2(w, h); panel.size = Vector2(w, h)
+	panel.position = (vs - panel.size) / 2.0
+
+func _on_leave() -> void:        # two taps so a stray tap on a phone doesn't drop you out of the game
+	if _leave_armed: _leave_armed = false; leave_requested.emit(); return
+	_leave_armed = true; leave_btn.text = "Tap again to leave"; _leave_token += 1; var me := _leave_token
+	await get_tree().create_timer(3.0).timeout
+	if me == _leave_token: _leave_armed = false; leave_btn.text = "Leave Game" if _mobile else "Leave Game   [L]"
+
+func _unhandled_key_input(e: InputEvent) -> void:
+	if not visible or not (e is InputEventKey) or not e.pressed or e.echo: return
+	if e.keycode == KEY_R: respawn_requested.emit(); close(); get_viewport().set_input_as_handled()
+	elif e.keycode == KEY_L: _on_leave(); get_viewport().set_input_as_handled()
+
+func _on_roster() -> void:
+	if not visible: return
+	if pages["Players"].visible: _refresh_players()
+	if pages["Report"].visible: _refresh_report_players()
+
+# ---------------- Players ----------------
+func _players_page(parent: Node) -> void:
+	players_list = VBoxContainer.new(); players_list.add_theme_constant_override("separation", 8); players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(players_list); pages["Players"] = players_list
+
+func _small_btn(parent: Node, text: String, cb: Callable) -> Button:
+	var b := Button.new(); b.text = text; b.custom_minimum_size = Vector2(0, 40); b.add_theme_font_size_override("font_size", 16); b.pressed.connect(cb); parent.add_child(b); return b
+
+func _refresh_players() -> void:
+	for c in players_list.get_children(): c.queue_free()
+	var ids := Net.players.keys()
+	ids.sort_custom(func(a, b): return Net.scores.get(a, 0) > Net.scores.get(b, 0) or (Net.scores.get(a, 0) == Net.scores.get(b, 0) and a < b))
+	for id in ids:
+		var info: Dictionary = Net.players[id]
+		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11) if id != Net.my_id else Color(0.13, 0.125, 0.1), Color(0.19, 0.19, 0.21) if id != Net.my_id else Color(0.35, 0.31, 0.18), 12)); players_list.add_child(card)
+		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); card.add_child(v)
+		var top := HBoxContainer.new(); top.add_theme_constant_override("separation", 12); v.add_child(top)
+		top.add_child(AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 40))
+		var col := VBoxContainer.new(); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; col.add_theme_constant_override("separation", 0); top.add_child(col)
+		var n := Label.new(); n.text = str(info.get("name", "?")); n.clip_text = true; n.add_theme_font_size_override("font_size", 20)
+		if id == Net.my_id: n.add_theme_color_override("font_color", Color("ffe27a"))
+		col.add_child(n)
+		var sub := Label.new(); sub.add_theme_font_size_override("font_size", 13); sub.modulate = Color(1, 1, 1, 0.5)
+		sub.text = "You" if id == Net.my_id else ("Blocked" if Net.blocked.has(id) else ("Muted" if Net.muted.has(id) else "Player")); col.add_child(sub)
+		var sc := Label.new(); sc.text = str(Net.scores.get(id, 0)); sc.add_theme_font_size_override("font_size", 20); sc.modulate = Color(1, 1, 1, 0.75); top.add_child(sc)
+		if id == Net.my_id: continue
+		var row := HFlowContainer.new(); row.add_theme_constant_override("h_separation", 8); row.add_theme_constant_override("v_separation", 8); v.add_child(row)
+		_small_btn(row, "Add Friend", func(): Net.send_friend(id))
+		_small_btn(row, "Unmute" if Net.muted.has(id) else "Mute", func(): Net.set_mute(id, not Net.muted.has(id)))
+		_small_btn(row, "Unblock" if Net.blocked.has(id) else "Block", func(): Net.set_block(id, not Net.blocked.has(id)); _refresh_players())
+		_small_btn(row, "Report", func(): open_report(id))
+
+# ---------------- Report ----------------
+func _report_page(parent: Node) -> void:
+	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 8); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Report"] = p
+	var intro := Label.new(); intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; intro.modulate = Color(1, 1, 1, 0.65); intro.add_theme_font_size_override("font_size", 16)
+	intro.text = "Report someone who is breaking the rules. The BlockTopia team reads every report. The latest chat messages from this server are attached automatically."
+	p.add_child(intro)
+	_section(p, "Who are you reporting?")
+	rep_player = OptionButton.new(); rep_player.custom_minimum_size = Vector2(0, 46); p.add_child(rep_player)
+	_section(p, "What happened?")
+	rep_reason = OptionButton.new(); rep_reason.custom_minimum_size = Vector2(0, 46); for r in REPORT_REASONS: rep_reason.add_item(r[0])
+	p.add_child(rep_reason)
+	_section(p, "Details (optional)")
+	rep_details = TextEdit.new(); rep_details.placeholder_text = "Tell us what happened (max 300 characters)"; rep_details.custom_minimum_size = Vector2(0, 92); rep_details.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	rep_details.text_changed.connect(func(): if rep_details.text.length() > 300: rep_details.text = rep_details.text.substr(0, 300); rep_details.set_caret_column(300))
+	var tb := ThemeBuilder.box(Color(0.04, 0.04, 0.045)); rep_details.add_theme_stylebox_override("normal", tb); rep_details.add_theme_stylebox_override("focus", ThemeBuilder.box(Color(0.04, 0.04, 0.045), Color(0.5, 0.5, 0.55)))
+	rep_details.add_theme_color_override("font_color", Color(0.95, 0.95, 0.96)); rep_details.add_theme_color_override("font_placeholder_color", Color(1, 1, 1, 0.35)); p.add_child(rep_details)
+	rep_send = Button.new(); rep_send.text = "Send report"; rep_send.custom_minimum_size = Vector2(0, 52); rep_send.pressed.connect(_send_report); p.add_child(rep_send)
+	rep_status = Label.new(); rep_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; rep_status.modulate = Color(1, 1, 1, 0.75); p.add_child(rep_status)
+
+func _refresh_report_players() -> void:
+	var keep := -1
+	if rep_player.selected >= 0 and rep_player.selected < rep_ids.size(): keep = rep_ids[rep_player.selected]
+	rep_player.clear(); rep_ids.clear()
+	for id in Net.players.keys():
+		if id == Net.my_id: continue
+		rep_ids.append(id)
+	rep_ids.sort_custom(func(a, b): return str(Net.players[a].get("name", "")).to_lower() < str(Net.players[b].get("name", "")).to_lower())
+	for id in rep_ids: rep_player.add_item(str(Net.players[id].get("name", "?")))
+	if rep_ids.is_empty(): rep_player.add_item("No other players here"); rep_player.disabled = true; rep_send.disabled = true
+	else:
+		rep_player.disabled = false; rep_send.disabled = false
+		if keep != -1 and rep_ids.has(keep): rep_player.select(rep_ids.find(keep))
+
+func open_report(id := -1) -> void:
+	open("Report")
+	if id != -1 and rep_ids.has(id): rep_player.select(rep_ids.find(id))
+	rep_status.text = ""
+
+func _send_report() -> void:
+	if rep_ids.is_empty() or rep_player.selected < 0: rep_status.text = "Pick a player first."; return
+	var id: int = rep_ids[rep_player.selected]
+	var reason: Array = REPORT_REASONS[rep_reason.selected]
+	_rep_pending = id; rep_send.disabled = true; rep_status.text = "Sending..."
+	Net.report(id, reason[1], reason[0], rep_details.text.strip_edges())
+
+func _on_report_done(duplicate: bool) -> void:
+	if _rep_pending == -1: return
+	_rep_pending = -1
+	rep_status.text = "You already reported this player a moment ago. Thank you." if duplicate else "Thank you! Your report was sent to the BlockTopia team."
+	if not duplicate: rep_details.text = ""
+	await get_tree().create_timer(1.5).timeout
+	if is_instance_valid(rep_send): rep_send.disabled = rep_ids.is_empty()
+
+# ---------------- Settings ----------------
+func _section(parent: Node, text: String) -> void:
+	var l := Label.new(); l.text = text.to_upper(); l.modulate = Color(1, 1, 1, 0.5); l.add_theme_font_size_override("font_size", 14); parent.add_child(l)
+
+func _slider(parent: Node, label: String, lo: float, hi: float, step: float, val: float, cb: Callable) -> void:
+	var l := Label.new(); l.text = label; parent.add_child(l)
+	var s := HSlider.new(); s.min_value = lo; s.max_value = hi; s.step = step; s.value = val; s.custom_minimum_size = Vector2(0, 34 if _mobile else 26)
+	s.value_changed.connect(func(v): cb.call(v); Settings.save_cfg(); Settings.changed.emit()); parent.add_child(s)
+
+func _check(parent: Node, text: String, val: bool, cb: Callable) -> void:
+	var c := CheckButton.new(); c.text = text; c.button_pressed = val; c.custom_minimum_size = Vector2(0, 46)
+	c.toggled.connect(func(on): cb.call(on); Settings.save_cfg(); Settings.changed.emit()); parent.add_child(c)
+
+func _settings_page(parent: Node) -> void:
+	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 8); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Settings"] = p
+	_section(p, "Graphics")
+	var o := OptionButton.new(); for q in ["Low", "Medium", "High"]: o.add_item("Graphics quality: " + q)
+	o.selected = Settings.quality; o.custom_minimum_size = Vector2(0, 46); o.item_selected.connect(func(i): Settings.quality = i; Settings.save_cfg(); Settings.changed.emit()); p.add_child(o)
+	if not _mobile: _check(p, "Fullscreen", Settings.fullscreen, func(on): Settings.fullscreen = on; Settings.apply_window())
+	_check(p, "Show FPS", Settings.show_fps, func(on): Settings.show_fps = on)
+	_check(p, "Show player names", Settings.show_names, func(on): Settings.show_names = on)
+	_section(p, "Audio")
+	_slider(p, "Volume", 0.0, 1.0, 0.01, Settings.volume, func(v): Settings.volume = v)
+	_section(p, "Camera")
+	if not _mobile: _slider(p, "Mouse sensitivity", 0.001, 0.008, 0.0002, Settings.sensitivity, func(v): Settings.sensitivity = v)
+	else: _slider(p, "Look sensitivity", 0.001, 0.008, 0.0002, Settings.sensitivity, func(v): Settings.sensitivity = v)
+	_slider(p, "Field of view", 50.0, 100.0, 1.0, Settings.fov, func(v): Settings.fov = v)
+	_slider(p, "Camera distance", 3.0, 12.0, 0.5, Settings.cam_distance, func(v): Settings.cam_distance = v)
+	if _mobile:
+		_section(p, "Touch controls")
+		_slider(p, "Controls opacity", 0.2, 1.0, 0.05, Settings.touch_opacity, func(v): Settings.touch_opacity = v)
+		_slider(p, "Controls size", 0.7, 1.5, 0.05, Settings.touch_size, func(v): Settings.touch_size = v)
+	var r := Button.new(); r.text = "Reset to defaults"; r.custom_minimum_size = Vector2(0, 48)
+	r.pressed.connect(func(): Settings.reset_defaults(); get_tree().create_timer(0.0).timeout.connect(_rebuild_settings)); p.add_child(r)
+
+func _rebuild_settings() -> void:         # sliders keep their own value, so rebuild the page after a reset
+	var old: Control = pages["Settings"]; var parent := old.get_parent(); var vis := old.visible
+	var idx := old.get_index(); parent.remove_child(old); old.queue_free(); _settings_page(parent); parent.move_child(pages["Settings"], idx); pages["Settings"].visible = vis
+
+# ---------------- Help ----------------
+func _help_page(parent: Node) -> void:
+	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 6); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Help"] = p
+	var rows: Array = [["Left stick", "Move"], ["Jump button", "Jump"], ["Drag the right side", "Look around"], ["Chat button", "Open chat"], ["Menu button", "Open this menu"]] if _mobile else [["W A S D / arrows", "Move"], ["Space", "Jump"], ["F11", "Fullscreen on / off"], ["F12", "Start / stop recording (red outline)"], ["Hold right mouse", "Look around"], ["Mouse wheel", "Zoom in / out"], ["Enter or /", "Open chat"], ["Tab", "Show or hide the player list"], ["Esc", "Open or close this menu"]]
+	_section(p, "Controls")
+	for r in rows:
+		var h := HBoxContainer.new(); p.add_child(h)
+		var a := Label.new(); a.text = r[0]; a.size_flags_horizontal = Control.SIZE_EXPAND_FILL; a.add_theme_color_override("font_color", Color("ffe27a")); h.add_child(a)
+		var b := Label.new(); b.text = r[1]; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(b)
+	_section(p, "Tips")
+	var t := Label.new(); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.text = "Click a name in the player list to add a friend, block or report them. When someone sends you a friend request, accept it from the card at the top of the screen.\nBe kind: the chat filter hides bad language and blocks personal info.\nStuck? Use Reset Character."
+	t.modulate = Color(1, 1, 1, 0.75); p.add_child(t)
+
+func show_page(n: String) -> void:
+	for k in pages: pages[k].visible = (k == n)
+	for k in tab_btns: tab_btns[k].button_pressed = (k == n)
+	if n == "Players": _refresh_players()
+	elif n == "Report": _refresh_report_players()
+
+func _process(delta: float) -> void:
+	if not visible: return
+	_stats_t -= delta
+	if _stats_t <= 0.0:
+		_stats_t = 0.5
+		var n := Net.players.size(); var ping := ("%d ms" % Net.ping_ms) if Net.ping_ms >= 0 else "-- ms"
+		info_label.text = "%d player%s  |  %s  |  %d FPS" % [n, "" if n == 1 else "s", ping, Engine.get_frames_per_second()]
+
+func open(page := "Players") -> void:
+	_leave_armed = false; leave_btn.text = "Leave Game" if _mobile else "Leave Game   [L]"; show_page(page); _fit(); visible = true
+func close() -> void: visible = false
+func toggle() -> void:
+	if visible: close()
+	else: open()
