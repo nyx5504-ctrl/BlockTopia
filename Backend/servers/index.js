@@ -14,6 +14,13 @@ const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
 const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
+const normalizeCharacter = (raw, fallback = "#f2c744") => {
+  const c = raw && typeof raw === "object" ? raw : {};
+  const height = Number(c.height);
+  const bodyType = ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic";
+  const bodyColor = /^#[0-9a-f]{6}$/i.test(String(c.bodyColor || "")) ? String(c.bodyColor).toLowerCase() : (/^#[0-9a-f]{6}$/i.test(fallback) ? fallback.toLowerCase() : "#f2c744");
+  return { height: Number.isFinite(height) ? Math.min(1.25, Math.max(0.75, height)) : 1, bodyType, bodyColor };
+};
 const tooMany = (map, key, max, ms) => { const now = Date.now(), a = (map.get(key) || []).filter(t => now - t < ms); a.push(now); map.set(key, a); return a.length > max; };
 
 function pickRoom(joinRoomId) {
@@ -48,8 +55,11 @@ const server = http.createServer(async (req, res) => {
           try { profile = await store.createProfile(u.uid, username); }
           catch (e) { return out(e.message === "USERNAME_TAKEN" ? 409 : 400, { error: e.message === "USERNAME_TAKEN" ? "That username is already taken." : "Could not save your profile." }); }
         }
+        if (body.character !== undefined) {
+          profile = await store.updateProfile(u.uid, { character: normalizeCharacter(body.character, profile.avatarColor) });
+        }
         if (!profile.username) return out(200, { needsUsername: true });
-        return out(200, { profile: { username: profile.username, avatarColor: profile.avatarColor || "#f4f4f2" } });
+        return out(200, { profile: { username: profile.username, avatarColor: profile.avatarColor || "#f4f4f2", character: normalizeCharacter(profile.character, profile.avatarColor) } });
       }
       const { game, action } = body;
       if (game !== "baseplate") return out(400, { error: "unknown game" });
@@ -109,7 +119,7 @@ function leaveRoom(p, why) {
 }
 function welcome(p, resume) {
   const r = p.room;
-  r.send(p, { t: "welcome", id: p.id, name: p.name, color: p.color, room: r.id, session: p.session, resume: !!resume, e: p.epoch, x: p.x, y: p.y, z: p.z, max: CFG.MAX_PLAYERS, players: r.live().filter(o => o !== p).map(o => r.pub(o)) });
+  r.send(p, { t: "welcome", id: p.id, name: p.name, color: p.color, character: p.character, room: r.id, session: p.session, resume: !!resume, e: p.epoch, x: p.x, y: p.y, z: p.z, max: CFG.MAX_PLAYERS, players: r.live().filter(o => o !== p).map(o => r.pub(o)) });
   r.broadcast({ t: "join", player: r.pub(p) }, p);
 }
 async function handleAuth(ws, m) {
@@ -123,7 +133,8 @@ async function handleAuth(ws, m) {
   const old = byUid.get(c.uid); if (old) leaveRoom(old, "other_login");
   const [profile, blocked] = await Promise.all([store.getUser(c.uid), store.getBlocks(c.uid)]); if (ws.readyState !== 1) return;
   const room = pickRoom(c.joinRoom); rooms.set(room.id, room);
-  const p = { uid: c.uid, name: (profile.username || c.name || "Player").slice(0, 20), color: profile.avatarColor || "#ffffff", profile: { username: profile.username || c.name, avatarColor: profile.avatarColor },
+  const character = normalizeCharacter(profile.character, profile.avatarColor);
+  const p = { uid: c.uid, name: (profile.username || c.name || "Player").slice(0, 20), color: profile.avatarColor || "#ffffff", character, profile: { username: profile.username || c.name, avatarColor: profile.avatarColor, character },
     ws, room, session: rnd(16), muted: new Set(), blocked, joinedAt: Date.now(), friendTimes: [], chatTimes: [], strikes: [], lastMsg: "", lastMsgAt: 0, lastOkAt: 0, cooldownUntil: 0, msgCount: 0, secCarry: 0, lastFlush: Date.now(), msgBudget: [], reportTimes: [] };
   room.add(p); ws.p = p; sessions.set(p.session, p); byUid.set(p.uid, p);
   store.addRecent(p.uid, "baseplate"); presence(p, profile.allowJoin !== "nobody"); p.joinable = profile.allowJoin !== "nobody";
