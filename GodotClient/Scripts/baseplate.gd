@@ -16,6 +16,7 @@ var sun: DirectionalLight3D
 var toast: PanelContainer
 var toast_label: Label
 var fps_label: Label
+var update_notice: Button
 var _toast_id := 0
 var _send_t := 0.0
 var _leaving := false
@@ -27,6 +28,9 @@ func _ready() -> void:
 	world = WorldBuilder.new(); add_child(world); world.build(); sun = world.sun
 	_build_ui()
 	Settings.changed.connect(_apply_quality); _apply_quality()
+	Settings.app_update_available.connect(_on_app_update_available)
+	if Settings.update_available: _on_app_update_available(Settings.update_version)
+	Settings.check_for_app_update()
 	Net.chat_received.connect(_on_chat_bubble); Net.friend_result.connect(func(ok, t): _toast(t); chat.system(t, "#8be28b" if ok else "#e8b33c"))
 	Net.welcomed.connect(_on_welcome); Net.player_joined.connect(_add_remote)
 	Net.player_left.connect(_on_left); Net.snapshot.connect(_on_snapshot)
@@ -60,6 +64,7 @@ func _build_ui() -> void:
 	toast = PanelContainer.new(); toast.set_anchors_preset(Control.PRESET_CENTER_TOP); toast.position = Vector2(-170, 16); toast.custom_minimum_size = Vector2(340, 0); toast.visible = false; toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
 	fps_label = Label.new(); fps_label.set_anchors_preset(Control.PRESET_CENTER_TOP); fps_label.position = Vector2(-40, 66); fps_label.add_theme_font_size_override("font_size", 16); fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9)); fps_label.add_theme_constant_override("outline_size", 6); fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(fps_label)
+	update_notice = Button.new(); update_notice.text = "Update available — tap to download"; update_notice.set_anchors_preset(Control.PRESET_TOP_RIGHT); update_notice.position = Vector2(-342, 18); update_notice.custom_minimum_size = Vector2(324, 46); update_notice.visible = false; update_notice.pressed.connect(func(): OS.shell_open(Settings.update_url)); hud.add_child(update_notice)
 	var ol := CanvasLayer.new(); ol.layer = 20; add_child(ol)
 	overlay = Control.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); ol.add_child(overlay)
 	var background := TextureRect.new(); background.texture = load("res://Assets/baseplate.png"); background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
@@ -72,10 +77,15 @@ func _build_ui() -> void:
 	var creator := Label.new(); creator.text = "By BlockTopia"; creator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; creator.modulate = Color(1, 1, 1, 0.72); creator.add_theme_font_size_override("font_size", 17); stack.add_child(creator)
 	overlay_text = Label.new(); overlay_text.text = "Loading game…"; overlay_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; overlay_text.add_theme_font_size_override("font_size", 18); stack.add_child(overlay_text)
 
+func _on_app_update_available(version: String) -> void:
+	if update_notice == null: return
+	update_notice.text = "Update %s available — tap to download" % version
+	update_notice.visible = true
+
 func _touch_on_ui(p: Vector2) -> bool:
 	if pause.visible or overlay.visible or _leaving: return true
 	if fprompt != null and fprompt.covers(p): return true
-	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup]:
+	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup, update_notice]:
 		if ctl != null and ctl.is_visible_in_tree() and ctl.get_global_rect().has_point(p): return true
 	return false
 
