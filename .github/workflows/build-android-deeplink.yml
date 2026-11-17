@@ -43,19 +43,28 @@ jobs:
           echo "${GODOT_VERSION}.stable" > android/.build_version
           touch android/build/.gdignore
           python3 - <<'PY'
-          p="android/build/AndroidManifest.xml"
-          s=open(p).read()
-          f='''<intent-filter>
+          import glob, sys
+          cands = [p for p in glob.glob("android/build/**/AndroidManifest.xml", recursive=True) if "android.intent.action.MAIN" in open(p, encoding="utf8").read()]
+          print("manifest candidates:", cands)
+          if not cands:
+              print("tree:"); import os
+              for r, d, f in os.walk("android/build"):
+                  if r.count("/") < 4: print(r, f[:8])
+              sys.exit("no manifest with a MAIN intent-filter found")
+          p = cands[0]
+          s = open(p, encoding="utf8").read()
+          if 'android:scheme="blocktopia"' not in s:
+              f = '''<intent-filter>
                       <action android:name="android.intent.action.VIEW" />
                       <category android:name="android.intent.category.DEFAULT" />
                       <category android:name="android.intent.category.BROWSABLE" />
                       <data android:scheme="blocktopia" />
                   </intent-filter>
                   '''
-          i=s.index("<intent-filter>")
-          s=s[:i]+f+s[i:]
-          open(p,"w").write(s)
-          print("manifest patched")
+              i = s.index("<intent-filter>")
+              s = s[:i] + f + s[i:]
+              open(p, "w", encoding="utf8").write(s)
+          print("manifest patched:", p)
           PY
           sed -i 's/gradle_build\/use_gradle_build=false/gradle_build\/use_gradle_build=true/' export_presets.cfg
           grep -n "use_gradle_build" export_presets.cfg
