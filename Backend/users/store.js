@@ -14,14 +14,19 @@ export const mem = { users: new Map(), friends: new Set(), stats: new Map(), rep
 const TS = () => admin.firestore.FieldValue.serverTimestamp();
 const INC = n => admin.firestore.FieldValue.increment(n);
 
-export async function getUser(uid) { if (!db) return mem.users.get(uid) || {}; const s = await db.doc(`users/${uid}`).get(); return s.exists ? s.data() : {}; }
+export async function getUser(uid) { if (!db) return mem.users.get(uid) || {}; const s = await db.doc("users/" + uid).get(); return s.exists ? s.data() : {}; }
+export async function updateProfile(uid, patch) {
+  if (!db) { const user = mem.users.get(uid) || {}; Object.assign(user, patch); mem.users.set(uid, user); return user; }
+  await db.doc("users/" + uid).set(patch, { merge: true });
+  return getUser(uid);
+}
 export async function createProfile(uid, username) {
   const usernameLower = username.toLowerCase();
   if (!db) {
     for (const [otherUid, user] of mem.users) if (otherUid !== uid && user.usernameLower === usernameLower) throw new Error("USERNAME_TAKEN");
     const old = mem.users.get(uid) || {};
     if (old.username) return old;
-    const profile = { username, usernameLower, avatarColor: "#f4f4f2", allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: new Date().toISOString() };
+    const profile = { username, usernameLower, avatarColor: "#f4f4f2", character: { height: 1, bodyType: "classic", bodyColor: "#f2c744" }, allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: new Date().toISOString() };
     mem.users.set(uid, profile); return profile;
   }
   const userRef = db.doc(`users/${uid}`), nameRef = db.doc(`usernames/${usernameLower}`);
@@ -30,7 +35,7 @@ export async function createProfile(uid, username) {
     if (userSnap.exists && userSnap.data().username) return;
     if (nameSnap.exists && nameSnap.data().uid !== uid) throw new Error("USERNAME_TAKEN");
     if (!nameSnap.exists) tx.create(nameRef, { uid });
-    tx.set(userRef, { username, usernameLower, avatarColor: "#f4f4f2", allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: TS() }, { merge: true });
+    tx.set(userRef, { username, usernameLower, avatarColor: "#f4f4f2", character: { height: 1, bodyType: "classic", bodyColor: "#f2c744" }, allowRequests: "everyone", allowJoin: "friends", recentGames: [], favorites: [], createdAt: TS() }, { merge: true });
   });
   return await getUser(uid);
 }
