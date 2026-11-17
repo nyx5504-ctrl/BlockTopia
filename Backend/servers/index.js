@@ -11,7 +11,7 @@ import { flushStats } from "../leaderboards/stats.js";
 const PORT = +process.env.PORT || 8787;
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:8000").split(",").map(s => s.trim());
 const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
-const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map();
+const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
 const tooMany = (map, key, max, ms) => { const now = Date.now(), a = (map.get(key) || []).filter(t => now - t < ms); a.push(now); map.set(key, a); return a.length > max; };
@@ -29,11 +29,50 @@ const server = http.createServer(async (req, res) => {
   const out = (c, o) => { res.writeHead(c, hdr); res.end(JSON.stringify(o)); };
   if (req.method === "OPTIONS") return out(204, {});
   if (req.url === "/health") return out(200, { ok: true, rooms: rooms.size, players: [...rooms.values()].reduce((n, r) => n + r.live().length, 0) });
-  if (req.method !== "POST" || req.url !== "/launch") return out(404, { error: "not found" });
+  if (req.method !== "POST") return out(404, { error: "not found" });
   if (origin && !okOrigin) return out(403, { error: "origin not allowed" });
+  const readBody = async () => {
+    let raw = ""; for await (const c of req) { raw += c; if (raw.length > 2048) { const e = new Error("too large"); e.status = 413; throw e; } }
+    return JSON.parse(raw || "{}");
+  };
+  if (req.url === "/profile" || req.url === "/game-feedback") {
+    try {
+      const body = await readBody();
+      const tok = (req.headers.authorization || "").replace(/^Bearer /, "");
+      let u; try { u = await verifyToken(tok); } catch { return out(401, { error: "not signed in" }); }
+      if (req.url === "/profile") {
+        let profile = await store.getUser(u.uid);
+        if (body.username !== undefined) {
+          const username = String(body.username || "").trim();
+          if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) return out(400, { error: "Choose a username of 3-20 letters, numbers or underscores." });
+          try { profile = await store.createProfile(u.uid, username); }
+          catch (e) { return out(e.message === "USERNAME_TAKEN" ? 409 : 400, { error: e.message === "USERNAME_TAKEN" ? "That username is already taken." : "Could not save your profile." }); }
+        }
+        if (!profile.username) return out(200, { needsUsername: true });
+        return out(200, { profile: { username: profile.username, avatarColor: profile.avatarColor || "#f4f4f2" } });
+      }
+      const { game, action } = body;
+      if (game !== "baseplate") return out(400, { error: "unknown game" });
+      if (tooMany(feedbackHits, u.uid, 20, 60000)) return out(429, { error: "Please wait before sending more game feedback." });
+      if (action === "reaction") {
+        if (!["like", "dislike"].includes(body.reaction)) return out(400, { error: "Choose like or dislike." });
+        const reaction = await store.toggleGameReaction(u.uid, game, body.reaction);
+        return out(200, { reaction });
+      }
+      if (action === "report") {
+        const profile = await store.getUser(u.uid);
+        const details = String(body.details || "").trim().slice(0, 500);
+        if (!details) return out(400, { error: "Add a short reason for the report." });
+        await store.saveReport({ type: "game", game, reporterUid: u.uid, reporterName: profile.username || u.name || "Player", reason: String(body.reason || "other").slice(0, 40), details });
+        return out(200, { ok: true });
+      }
+      return out(400, { error: "unknown action" });
+    } catch (e) { return out(e.status || 400, { error: e.status === 413 ? "too large" : "bad request" }); }
+  }
+  if (req.url !== "/launch") return out(404, { error: "not found" });
   try {
-    let body = ""; for await (const c of req) { body += c; if (body.length > 2048) return out(413, { error: "too large" }); }
-    const { game, joinUid } = JSON.parse(body || "{}");
+    const body = await readBody();
+    const { game, joinUid } = body;
     const tok = (req.headers.authorization || "").replace(/^Bearer /, "");
     let u; try { u = await verifyToken(tok); } catch { return out(401, { error: "not signed in" }); }
     if (game !== "baseplate") return out(400, { error: "unknown game" });
@@ -76,10 +115,10 @@ async function handleAuth(ws, m) {
   const c = codes.get(m.code); if (!c || c.exp < Date.now()) return ws.close(4001, "invalid or expired launch code");
   codes.delete(m.code);                                                           // single use
   const old = byUid.get(c.uid); if (old) leaveRoom(old, "other_login");
-  const [profile, blocked, st] = await Promise.all([store.getUser(c.uid), store.getBlocks(c.uid), store.getStats(c.uid)]); if (ws.readyState !== 1) return;
+  const [profile, blocked] = await Promise.all([store.getUser(c.uid), store.getBlocks(c.uid)]); if (ws.readyState !== 1) return;
   const room = pickRoom(c.joinRoom); rooms.set(room.id, room);
   const p = { uid: c.uid, name: (profile.username || c.name || "Player").slice(0, 20), color: profile.avatarColor || "#ffffff", profile: { username: profile.username || c.name, avatarColor: profile.avatarColor },
-    ws, room, session: rnd(16), muted: new Set(), blocked, baseScore: st.score || 0, score: st.score || 0, joinedAt: Date.now(), friendTimes: [], chatTimes: [], strikes: [], lastMsg: "", lastMsgAt: 0, lastOkAt: 0, cooldownUntil: 0, msgCount: 0, secCarry: 0, scoreCarry: 0, lastFlush: Date.now(), msgBudget: [], reportTimes: [] };
+    ws, room, session: rnd(16), muted: new Set(), blocked, joinedAt: Date.now(), friendTimes: [], chatTimes: [], strikes: [], lastMsg: "", lastMsgAt: 0, lastOkAt: 0, cooldownUntil: 0, msgCount: 0, secCarry: 0, lastFlush: Date.now(), msgBudget: [], reportTimes: [] };
   room.add(p); ws.p = p; sessions.set(p.session, p); byUid.set(p.uid, p);
   store.addRecent(p.uid, "baseplate"); presence(p, profile.allowJoin !== "nobody"); p.joinable = profile.allowJoin !== "nobody";
   welcome(p, false); notifyBlocks(p);
@@ -179,8 +218,6 @@ wss.on("connection", ws => {
 });
 setInterval(() => { for (const r of rooms.values()) { const s = JSON.stringify(r.snapshot()); for (const p of r.live()) if (p.ws.readyState === 1) p.ws.send(s); } }, 66);
 setInterval(() => { for (const ws of wss.clients) { if (!ws.alive) { ws.terminate(); continue; } ws.alive = false; ws.ping(); } }, 20000);
-setInterval(() => { for (const r of rooms.values()) { const live = r.live(); for (const p of live) p.score = p.baseScore + Math.floor((Date.now() - p.joinedAt) / 10000);
-  const s = JSON.stringify({ t: "scores", s: live.map(p => [p.id, p.score]) }); for (const p of live) if (p.ws.readyState === 1) p.ws.send(s); } }, 5000);
 setInterval(() => { for (const r of rooms.values()) for (const p of r.live()) { flushStats(p).catch(() => {}); presence(p, p.joinable !== false); } }, 30000);
 
 export async function start(port = PORT) {
