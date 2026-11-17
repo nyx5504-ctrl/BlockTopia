@@ -14,11 +14,11 @@ const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
 const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
-const normalizeCharacter = (raw, fallback = "#f2c744") => {
+const normalizeCharacter = raw => {
   const c = raw && typeof raw === "object" ? raw : {};
   const height = Number(c.height);
   const bodyType = ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic";
-  const bodyColor = /^#[0-9a-f]{6}$/i.test(String(c.bodyColor || "")) ? String(c.bodyColor).toLowerCase() : (/^#[0-9a-f]{6}$/i.test(fallback) ? fallback.toLowerCase() : "#f2c744");
+  const bodyColor = /^#[0-9a-f]{6}$/i.test(String(c.bodyColor || "")) ? String(c.bodyColor).toLowerCase() : "#f2c744";
   return { height: Number.isFinite(height) ? Math.min(1.25, Math.max(0.75, height)) : 1, bodyType, bodyColor };
 };
 const tooMany = (map, key, max, ms) => { const now = Date.now(), a = (map.get(key) || []).filter(t => now - t < ms); a.push(now); map.set(key, a); return a.length > max; };
