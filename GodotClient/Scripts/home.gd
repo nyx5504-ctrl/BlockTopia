@@ -58,7 +58,7 @@ func _fit() -> void:
 func _clear() -> void:
 	for node in _col.get_children():
 		_col.remove_child(node); node.queue_free()
-	_status = null
+	_status = null; _email = null; _password = null; _username = null; _report_edit = null; _report_reason = null
 
 func _set_status_screen(message: String) -> void:
 	_screen = "loading"; _clear()
@@ -157,7 +157,9 @@ func _auth_error(data: Dictionary) -> String:
 	match code:
 		"INVALID_LOGIN_CREDENTIALS", "EMAIL_NOT_FOUND", "INVALID_PASSWORD": return "That email and password don't match."
 		"EMAIL_EXISTS": return "An account already uses that email. Log in instead."
-		"WEAK_PASSWORD : Password should be at least 6 characters": return "Use a stronger password."
+		"INVALID_EMAIL": return "Enter a valid email address."
+		"MISSING_PASSWORD": return "Enter your password."
+		"WEAK_PASSWORD", "WEAK_PASSWORD : Password should be at least 6 characters": return "Use a stronger password."
 		"TOO_MANY_ATTEMPTS_TRY_LATER": return "Too many attempts. Wait a little and try again."
 		"OPERATION_NOT_ALLOWED": return "Email and password sign-in is not enabled for this project."
 		_: return "Couldn't sign in. Check your connection and try again."
