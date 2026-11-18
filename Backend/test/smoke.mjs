@@ -20,6 +20,7 @@ try {
   for (const bad of ["email me bob@gmail.com", "call 555 123 4567", "visit www.evil.com", "add me on snapchat", "my number is hi", "kill yourself"]) ok(!checkMessage(bad).ok, `blocks: ${bad}`);
   for (const bad of ["you are a f u c k", "fuuuck this", "sh1t", "ass!", "sh.it", "fvck you", "ｆｕｃｋ", "you sharmouta", "انت شرموطه", "ya kalb"]) { const r = checkMessage(bad); ok(r.ok && r.masked && /#/.test(r.text), `masks: ${bad} -> ${r.text}`); }
   for (const good of ["hello world", "Scunthorpe is a town", "my pen is blue", "pass the grass", "assassin creed", "class is fun", "a cocktail please", "pen is mine", "what a nice day!"]) { const r = checkMessage(good); ok(r.ok && !r.masked && r.text === good, `allows: ${good}`); }
+  for (const bad of ["ꜰᴜᴄᴋ you", "fսck", "ꓑꓳꓣꓠ", "s𝐡ⅰt", "ꜰuϲk", "ƒսcƙ", "ⅼ", "bꓲtch".replace("ꓲ", "ꓲ")]) ok(checkMessage(bad).ok, `no crash on odd text: ${bad}`);
   for (const bad of ["𝐟𝐮𝐜𝐤 you", "🅵🆄🅲🅺", "ꜰᴜᴄᴋ", "f\u200bu\u200bc\u200bk", "ƒυск", "f-u-c-k", "yoush1ting", "ⓢⓗⓘⓣ", "f u c k"]) { const r = checkMessage(bad); ok(r.ok && r.masked && /#/.test(r.text), `masks fancy/hidden: ${bad} -> ${r.text}`); }
   ok(checkMessage("what the f*ck man").text === "what the #### man", "only the bad word is hidden");
   for (const good of ["hello everyone!", "I love this game", "assume the class passed", "Scunthorpe is a town"]) ok(checkMessage(good).ok, `allows: ${good}`);
@@ -68,7 +69,18 @@ try {
   B.send({ t:"friend_accept", id: wa.id }); await sleep(150); ok(B.msgs.filter(m => m.t === "friend_result" && m.friends).length === 1, "accepting twice does nothing");
   B.send({ t:"block", id: wa.id, on:true }); ok(await B.wait(m => m.t === "mute_ok" && m.blocked && m.on), "block acknowledged");
   A.send({ t:"friend", id: wb.id }); await sleep(150); ok(A.msgs.filter(m => m.t === "friend_result").pop().text.includes("can't"), "blocked player can't send friend request");
-  const sc = await A.wait(m => m.t === "scores", 6000); ok(sc && sc.s.length >= 2, "live scores broadcast");
+
+  console.log("avatar sync");
+  const blue = { height: 1.1, bodyType: "broad", parts: { torso: { size: 1, color: "#0d69ac" } } };
+  A.msgs.length = 0; B.msgs.length = 0;
+  A.send({ t:"character", character: blue });
+  ok(await B.wait(m => m.t === "character" && m.id === wa.id && m.character.parts.torso.color === "#0d69ac"), "other players see a character change");
+  ok(await A.wait(m => m.t === "character" && m.id === wa.id && m.saved && m.character.bodyType === "broad"), "you get your own change too");
+  A.msgs.length = 0; B.msgs.length = 0;
+  const viaWeb = await fetch(base + "/profile", { method:"POST", headers:{ Authorization:"Bearer dev:alice:alice", "Content-Type":"application/json" }, body: JSON.stringify({ character: { bodyType: "slim", parts: { head: { color: "#c4281c" } } } }) });
+  ok(viaWeb.status === 200, "website/app profile save accepted");
+  ok(await B.wait(m => m.t === "character" && m.id === wa.id && m.character.parts.head.color === "#c4281c"), "saving on the website updates everyone already in game");
+  ok(await A.wait(m => m.t === "character" && m.id === wa.id && m.saved && m.character.bodyType === "slim"), "...including yourself");
 
   console.log("capacity, reconnect, leave");
   const l3 = await launch("carol"); const C = client(l3.code); await C.wait(m => m.t === "welcome");

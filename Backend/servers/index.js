@@ -40,6 +40,12 @@ const normalizeCharacter = raw => {
   const bodyType = ["classic", "slim", "broad"].includes(c.bodyType) ? c.bodyType : "classic";
   return { height: Number.isFinite(height) ? Math.min(1.25, Math.max(0.75, height)) : 1, bodyType, bodyColor: parts.head.color, parts };
 };
+// Applies a saved character to a connected player and tells the whole room (including that player), so customizing on the website or app shows up in game right away.
+function pushCharacter(p, character) {
+  p.character = character; if (p.profile) p.profile.character = character;
+  p.room.broadcast({ t: "character", id: p.id, character }, p);
+  p.room.send(p, { t: "character", id: p.id, character, saved: true });
+}
 const tooMany = (map, key, max, ms) => { const now = Date.now(), a = (map.get(key) || []).filter(t => now - t < ms); a.push(now); map.set(key, a); return a.length > max; };
 
 function pickRoom(joinRoomId) {
@@ -112,7 +118,9 @@ const server = http.createServer(async (req, res) => {
           catch (e) { return out(e.message === "USERNAME_TAKEN" ? 409 : 400, { error: e.message === "USERNAME_TAKEN" ? "That username is already taken." : "Could not save your profile." }); }
         }
         if (body.character !== undefined) {
-          profile = await store.updateProfile(u.uid, { character: normalizeCharacter(body.character, profile.avatarColor) });
+          const character = normalizeCharacter(body.character, profile.avatarColor);
+          profile = await store.updateProfile(u.uid, { character });
+          const live = byUid.get(u.uid); if (live && !live.gone) pushCharacter(live, character);   // already in a game: update everyone's view now
         }
         if (!profile.username) return out(200, { needsUsername: true });
         return out(200, { profile: { username: profile.username, avatarColor: profile.avatarColor || "#f4f4f2", character: normalizeCharacter(profile.character, profile.avatarColor) } });
@@ -274,12 +282,7 @@ function handle(ws, m) {
       if (now - (p.lastCharacterUpdate || 0) < 1000) return r.send(p, { t: "character", id: p.id, saved: false });
       p.lastCharacterUpdate = now;
       const character = normalizeCharacter(m.character);
-      store.updateProfile(p.uid, { character }).then(() => {
-        p.character = character;
-        if (p.profile) p.profile.character = character;
-        r.broadcast({ t: "character", id: p.id, character }, p);
-        r.send(p, { t: "character", id: p.id, character, saved: true });
-      }).catch(() => r.send(p, { t: "character", id: p.id, saved: false }));
+      store.updateProfile(p.uid, { character }).then(() => pushCharacter(p, character)).catch(() => r.send(p, { t: "character", id: p.id, saved: false }));
       break; }
     case "leave": leaveRoom(p); break;
   }

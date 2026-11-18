@@ -4,6 +4,7 @@
 // CHAT_FILTER_MODE=mask (default): bad words are replaced with #### and the rest of the message is sent (Roblox style).
 // CHAT_FILTER_MODE=block: the whole message is rejected instead.
 import { CONFUSABLES } from "./confusables.js";
+import { CONFUSABLES_EXTRA } from "./confusables_extra.js";
 
 export const FILTER_MODE = (process.env.CHAT_FILTER_MODE || "mask").toLowerCase() === "block" ? "block" : "mask";
 
@@ -91,14 +92,17 @@ function badToken(tok) {
 // Emoji people use as letters.
 const EMOJI_LETTER = { "💲": "s", "⭕": "o", "🅾": "o", "🅰": "a", "🅱": "b", "ℹ": "i", "❌": "x", "✖": "x", "❎": "x", "🔠": "", "🆎": "ab", "🆑": "cl", "🆒": "cool", "🆓": "free", "🆗": "ok", "🔞": "", "💯": "100", "🅿": "p", "Ⓜ": "m", "©": "c", "®": "r", "™": "tm", "§": "s", "¥": "y", "€": "e", "¢": "c", "£": "l", "∂": "d", "∑": "e", "∏": "n", "∫": "j", "√": "v", "∞": "oo", "≠": "e", "∆": "a", "Ω": "o", "µ": "u", "×": "x", "÷": "", "¡": "i", "¿": "" };
 // Seen through fancy fonts: NFKD folds bold/italic/circled/fullwidth/accented forms, CONFUSABLES folds look-alike alphabets, small caps and upside-down text.
+// Characters whose NFKD form would turn into a different (wrong) letter, so they are read before folding.
+const RAW = { "Ϲ": "c", "ϲ": "c", "ӏ": "l", "Ⅰ": "l", "ɯ": "w" };
 const normLatin = s => {
   let out = "";
+  s = s.replace(/[ϹϲӏⅠɯ]/g, c => RAW[c]);
   for (const ch of s.normalize("NFKD")) {
     if (/\p{M}/u.test(ch)) continue;                                     // accents, zalgo, strike-through, underline, keycaps
-    const m = CONFUSABLES[ch] ?? EMOJI_LETTER[ch] ?? HOMOGLYPH[ch];
+    const m = CONFUSABLES[ch] ?? CONFUSABLES_EXTRA[ch] ?? EMOJI_LETTER[ch] ?? HOMOGLYPH[ch];
     out += m !== undefined ? m : ch;
   }
-  return out.toLowerCase().replace(/[^\u0000-\u007f]/g, c => CONFUSABLES[c] || HOMOGLYPH[c] || c);
+  return out.toLowerCase().replace(/[^\u0000-\u007f]/g, c => CONFUSABLES[c] || CONFUSABLES_EXTRA[c] || HOMOGLYPH[c] || c);
 };
 const leetOf = plain => plain.replace(/[01345789@$!+|€¢£]/g, c => LEET[c] || c);
 const stripEdges = c => c.replace(/^['"(\[]+/, "").replace(/[!.,?;:'")\]]+$/, "");     // "fuck!!!" -> "fuck" (otherwise ! would turn into an i)
@@ -122,7 +126,7 @@ function arabicChunkBad(c) {
 
 export function checkMessage(raw) {
   if (typeof raw !== "string") return { ok: false, reason: "invalid" };
-  const text = raw.normalize("NFKC").replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
+  const text = raw.replace(/[ϹϲӏⅠɯ]/g, c => RAW[c]).normalize("NFKC").replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
   if (!text) return { ok: false, reason: "empty" };
   if (text.length > 150) return { ok: false, reason: "long" };
   const letters = text.replace(/[^A-Za-z]/g, "");
@@ -172,7 +176,7 @@ export function checkMessage(raw) {
 // "fu" then "ck" in two quick messages. Only very short fragments are joined, so ordinary chat ("pen" ... "is") is never touched.
 export function checkSplit(prevRaw, curRaw) {
   if (typeof prevRaw !== "string" || typeof curRaw !== "string") return false;
-  const clean = x => letterForm(x.normalize("NFKC").replace(INVISIBLE, "").trim());
+  const clean = x => letterForm(x.replace(/[ϹϲӏⅠɯ]/g, c => RAW[c]).normalize("NFKC").replace(INVISIBLE, "").trim());
   const a = clean(prevRaw), b = clean(curRaw);
   if (!a || !b || a.length > 4 || b.length > 4 || a.length + b.length < 4) return false;
   const ok = (a.length <= 2 && b.length <= 2) || (Math.min(a.length, b.length) === 1);
