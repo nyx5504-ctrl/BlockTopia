@@ -15,6 +15,9 @@ var touch: Node = null    # TouchControls (optional)
 var test_move := Vector2.ZERO
 var anim := "idle"
 var rmb := false           # Roblox-style: hold right mouse to look around
+var shift_lock := false    # Roblox-style Shift Lock: mouse always steers the camera, the character faces where the camera looks, camera sits over the right shoulder
+signal shift_lock_changed(on: bool)
+const SHIFT_LOCK_SHOULDER := 1.7
 
 func setup(display_name: String, color: Color, character: Dictionary = {}) -> void:
 	var height := clampf(float(character.get("height", 1.0)), 0.75, 1.25)
@@ -28,12 +31,27 @@ func setup(display_name: String, color: Color, character: Dictionary = {}) -> vo
 	cam = Camera3D.new(); cam.fov = Settings.fov; cam.current = true; arm.add_child(cam)
 	floor_snap_length = 0.3
 
+func set_shift_lock(on: bool) -> void:
+	if shift_lock == on: return
+	shift_lock = on; shift_lock_changed.emit(on)
+
+func _update_mouse_mode() -> void:
+	if Settings.is_mobile(): return
+	var want := Input.MOUSE_MODE_CAPTURED if (not blocked and (shift_lock or rmb)) else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != want: Input.mouse_mode = want
+
 func _unhandled_input(e: InputEvent) -> void:
 	if blocked:
-		if rmb: rmb = false; Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		if rmb: rmb = false
+		return
+	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_SHIFT:
+		set_shift_lock(not shift_lock); return
+	if e is InputEventMouseMotion and shift_lock and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		yaw -= e.relative.x * Settings.sensitivity
+		pitch = clampf(pitch - e.relative.y * Settings.sensitivity, -1.3, 0.6)
 		return
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_RIGHT and not Settings.is_mobile():
-		rmb = e.pressed; Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if e.pressed else Input.MOUSE_MODE_VISIBLE
+		rmb = e.pressed
 	elif e is InputEventMouseMotion and rmb and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= e.relative.x * Settings.sensitivity
 		pitch = clampf(pitch - e.relative.y * Settings.sensitivity, -1.3, 0.6)
@@ -42,6 +60,8 @@ func _unhandled_input(e: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	arm.spring_length = lerpf(arm.spring_length, Settings.cam_distance, 0.2); cam.fov = Settings.fov
+	arm.position.x = lerpf(arm.position.x, SHIFT_LOCK_SHOULDER if shift_lock else 0.0, 1.0 - exp(-12.0 * delta))
+	_update_mouse_mode()
 	var v := Vector2.ZERO; var want_jump := false
 	if not blocked:
 		v = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -62,7 +82,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = maxf(velocity.y - GRAVITY * delta, -50.0)
 	move_and_slide()
-	if dir.length() > 0.1:
+	if shift_lock and not blocked:
+		avatar.rotation.y = lerp_angle(avatar.rotation.y, yaw + PI, 1.0 - exp(-18.0 * delta))      # face where the camera looks
+	elif dir.length() > 0.1:
 		avatar.rotation.y = lerp_angle(avatar.rotation.y, atan2(dir.x, dir.z), 1.0 - exp(-14.0 * delta))
 	var hs := Vector2(velocity.x, velocity.z).length()
 	anim = ("jump" if velocity.y > 0.5 else "fall") if not is_on_floor() else ("run" if hs > 0.5 else "idle")

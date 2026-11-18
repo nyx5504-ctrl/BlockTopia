@@ -810,7 +810,7 @@ func _add_character_customizer(parent: Node) -> void:
 		var part_size_text := Label.new(); part_size_text.text = "%d%%" % roundi(float(spec.size) * 100.0); part_size_text.modulate = Color(1, 1, 1, 0.65); heading.add_child(part_size_text)
 		var part_controls := HBoxContainer.new(); part_controls.add_theme_constant_override("separation", 8); row.add_child(part_controls)
 		var slider := HSlider.new(); slider.min_value = 0.7; slider.max_value = 1.3; slider.step = 0.05; slider.value = float(spec.size); slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL; slider.custom_minimum_size = Vector2(0, 34); part_controls.add_child(slider)
-		var picker := ColorPickerButton.new(); picker.color = Color(str(spec.color)); picker.custom_minimum_size = Vector2(56, 40); part_controls.add_child(picker)
+		var picker := SwatchPicker.new(); part_controls.add_child(picker); picker.attach_grid(row); picker.color = Color(str(spec.color))
 		_character_part_sizes[part] = slider; _character_part_colors[part] = picker
 		slider.value_changed.connect(func(v): part_size_text.text = "%d%%" % roundi(v * 100.0); _preview_character())
 		picker.color_changed.connect(func(_c): _preview_character())

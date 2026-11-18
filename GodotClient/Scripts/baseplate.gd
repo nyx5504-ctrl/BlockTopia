@@ -11,6 +11,7 @@ var overlay: Control
 var overlay_text: Label
 var overlay_back: Button
 var plist: PlayerList
+var lock_btn: IconButton
 var world: WorldBuilder
 var sun: DirectionalLight3D
 var toast: PanelContainer
@@ -61,6 +62,11 @@ func _build_ui() -> void:
 		var tl := CanvasLayer.new(); tl.layer = 3; add_child(tl); touch = TouchControls.new(); tl.add_child(touch)
 		touch.is_ui = _touch_on_ui
 	var hud := CanvasLayer.new(); hud.layer = 8; add_child(hud)
+	lock_btn = IconButton.new("lock"); lock_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	var lb := lock_btn.custom_minimum_size.x
+	lock_btn.offset_right = -16; lock_btn.offset_left = -16 - lb; lock_btn.offset_bottom = -16 if not Settings.is_mobile() else -250; lock_btn.offset_top = lock_btn.offset_bottom - lb
+	lock_btn.pressed.connect(func(): if local != null and not (pause.visible or chat.typing): local.set_shift_lock(not local.shift_lock))
+	hud.add_child(lock_btn)
 	toast = PanelContainer.new(); toast.set_anchors_preset(Control.PRESET_CENTER_TOP); toast.position = Vector2(-170, 16); toast.custom_minimum_size = Vector2(340, 0); toast.visible = false; toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
 	fps_label = Label.new(); fps_label.set_anchors_preset(Control.PRESET_CENTER_TOP); fps_label.position = Vector2(-40, 66); fps_label.add_theme_font_size_override("font_size", 16); fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9)); fps_label.add_theme_constant_override("outline_size", 6); fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(fps_label)
@@ -85,7 +91,7 @@ func _on_app_update_available(version: String) -> void:
 func _touch_on_ui(p: Vector2) -> bool:
 	if pause.visible or overlay.visible or _leaving: return true
 	if fprompt != null and fprompt.covers(p): return true
-	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup, update_notice]:
+	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup, update_notice, lock_btn]:
 		if ctl != null and ctl.is_visible_in_tree() and ctl.get_global_rect().has_point(p): return true
 	return false
 
@@ -116,6 +122,7 @@ func _on_welcome(m: Dictionary) -> void:
 	remotes.clear()
 	if local == null:
 		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch
+		local.shift_lock_changed.connect(func(on): lock_btn.active = on; _toast("Shift Lock on" if on else "Shift Lock off"))
 	local.teleport(Vector3(m.x, m.y, m.z))
 	for p in m.players: _add_remote(p)
 	chat.system("Welcome to Baseplate, %s! %s" % [Net.my_name, "Drag the right side of the screen to look around." if Settings.is_mobile() else "Hold the right mouse button to look around. Click a name in the player list for options."])
@@ -180,7 +187,7 @@ func _process(delta: float) -> void:
 		n.position = n.position.lerp(r.target, 1.0 - exp(-14.0 * delta)); n.rotation.y = lerp_angle(n.rotation.y, r.ry, 1.0 - exp(-14.0 * delta))
 	if local == null: return
 	local.blocked = pause.visible or chat.typing or overlay.visible or _leaving
-	if local.blocked and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED: Input.mouse_mode = Input.MOUSE_MODE_VISIBLE; local.rmb = false
+	if local.blocked: local.rmb = false
 	if local.global_position.y < -50.0: Net.request_respawn()
 	_send_t += delta
 	if _send_t >= 0.066 and Net.state == "online": _send_t = 0.0; Net.send_pos(local.global_position, local.avatar.rotation.y, local.anim)
@@ -221,6 +228,7 @@ func _run_shots() -> void:      # used by Backend/test/shots.mjs to review visua
 	Settings.cam_distance = 6.0; local.yaw = 0.0; local.pitch = -0.25; Settings.show_fps = true
 	plist._open_popup(Net.players.keys().filter(func(i): return i != Net.my_id)[0], plist._row_nodes[Net.players.keys().filter(func(i): return i != Net.my_id)[0]]); await _snap("6b_leaderboard_popup"); plist.popup.visible = false
 	fprompt._on_request(Net.players.keys().filter(func(i): return i != Net.my_id)[0], "Alice"); fprompt._on_request(99, "Bob_the_Builder"); await get_tree().create_timer(0.3).timeout; await _snap("6c_friend_request")
+	local.set_shift_lock(true); local.yaw = 0.4; Settings.cam_distance = 7.0; await get_tree().create_timer(0.8).timeout; await _snap("6d_shift_lock"); local.set_shift_lock(false)
 	pause.open(); await _snap("7_menu_players")
 	pause.open_report(Net.players.keys().filter(func(i): return i != Net.my_id)[0]); await _snap("8_menu_report")
 	pause.show_page("Settings"); await _snap("10_menu_settings")

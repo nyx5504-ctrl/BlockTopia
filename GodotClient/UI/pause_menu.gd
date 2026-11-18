@@ -228,7 +228,7 @@ func _rebuild_settings() -> void:         # sliders keep their own value, so reb
 # ---------------- Help ----------------
 func _help_page(parent: Node) -> void:
 	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 6); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Help"] = p
-	var rows: Array = [["Left stick", "Move"], ["Jump button", "Jump"], ["Drag the right side", "Look around"], ["Chat button", "Open chat"], ["Menu button", "Open this menu"]] if _mobile else [["W A S D / arrows", "Move"], ["Space", "Jump"], ["F11", "Fullscreen on / off"], ["F12", "Start / stop recording (red outline)"], ["Hold right mouse", "Look around"], ["Mouse wheel", "Zoom in / out"], ["Enter or /", "Open chat"], ["Tab", "Show or hide the player list"], ["Esc", "Open or close this menu"]]
+	var rows: Array = [["Left stick", "Move"], ["Jump button", "Jump"], ["Drag the right side", "Look around"], ["Lock button", "Shift Lock: character faces where you look"], ["Chat button", "Open chat"], ["Menu button", "Open this menu"]] if _mobile else [["W A S D / arrows", "Move"], ["Space", "Jump"], ["F11", "Fullscreen on / off"], ["F12", "Start / stop recording (red outline)"], ["Hold right mouse", "Look around"], ["Shift", "Shift Lock: mouse steers the camera, character faces forward"], ["Mouse wheel", "Zoom in / out"], ["Enter or /", "Open chat"], ["Tab", "Show or hide the player list"], ["Esc", "Open or close this menu"]]
 	_section(p, "Controls")
 	for r in rows:
 		var h := HBoxContainer.new(); p.add_child(h)

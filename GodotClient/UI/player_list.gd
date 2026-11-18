@@ -3,10 +3,11 @@ extends CanvasLayer
 ## Roblox-style player list (top-right): every player on its own translucent row with an avatar badge and name.
 ## Your own row is highlighted. Click a name to open a small tab beside it: Add Friend, Block, Report. Press Tab (or the - button) to hide the list.
 signal report_requested(id: int)
-const ROW_H := 38
+const ROW_H := 36
 var panel: PanelContainer
 var rows: VBoxContainer
 var title: Label
+var count_label: Label
 var collapse: Button
 var popup: PanelContainer
 var popup_chip_holder: HBoxContainer
@@ -21,18 +22,19 @@ var _row_nodes := {}
 func _ready() -> void:
 	layer = 4
 	var root := Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(root)
-	panel = PanelContainer.new(); panel.anchor_left = 1.0; panel.anchor_right = 1.0; panel.offset_left = -250; panel.offset_right = -12; panel.offset_top = 12
+	panel = PanelContainer.new(); panel.anchor_left = 1.0; panel.anchor_right = 1.0; panel.offset_left = -220; panel.offset_right = -12; panel.offset_top = 12
 	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0, 0, 0, 0); sb.set_content_margin_all(0); panel.add_theme_stylebox_override("panel", sb); root.add_child(panel)
 	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 3); panel.add_child(v)
-	var head := PanelContainer.new(); head.add_theme_stylebox_override("panel", _row_style(Color(0.04, 0.04, 0.05, 0.78), 10)); v.add_child(head)
-	var hh := HBoxContainer.new(); head.add_child(hh)
-	title = Label.new(); title.text = "Players"; title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; title.add_theme_font_size_override("font_size", 16); hh.add_child(title)
-	collapse = Button.new(); collapse.text = "-"; collapse.flat = true; collapse.custom_minimum_size = Vector2(28, 24); collapse.focus_mode = Control.FOCUS_NONE; collapse.pressed.connect(toggle); hh.add_child(collapse)
+	var head := PanelContainer.new(); head.add_theme_stylebox_override("panel", _row_style(Color(0.02, 0.02, 0.03, 0.8), 8)); v.add_child(head)
+	var hh := HBoxContainer.new(); hh.add_theme_constant_override("separation", 6); head.add_child(hh)
+	title = Label.new(); title.text = "Players"; title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; title.add_theme_font_size_override("font_size", 15); title.modulate = Color(1, 1, 1, 0.85); hh.add_child(title)
+	count_label = Label.new(); count_label.add_theme_font_size_override("font_size", 14); count_label.modulate = Color(1, 1, 1, 0.55); hh.add_child(count_label)
+	collapse = Button.new(); collapse.text = "▾"; collapse.flat = true; collapse.custom_minimum_size = Vector2(26, 22); collapse.focus_mode = Control.FOCUS_NONE; collapse.tooltip_text = "Hide player list  (Tab)"; collapse.pressed.connect(toggle); hh.add_child(collapse)
 	rows = VBoxContainer.new(); rows.add_theme_constant_override("separation", 3); v.add_child(rows)
 	_build_popup(root)
 	Net.welcomed.connect(func(_m): refresh()); Net.player_joined.connect(func(_p): refresh()); Net.player_left.connect(func(_i, _n): refresh())
 	Net.mute_changed.connect(func(_i, _o): refresh())
-	if Settings.is_mobile(): panel.offset_left = -200; toggle()
+	if Settings.is_mobile(): panel.offset_left = -190; toggle()
 
 func _face_color(info: Dictionary) -> Color:
 	var character: Variant = info.get("character", {})
@@ -42,7 +44,7 @@ func _row_style(c: Color, r := 8) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new(); s.bg_color = c; s.set_corner_radius_all(r); s.content_margin_left = 10; s.content_margin_right = 8; s.content_margin_top = 5; s.content_margin_bottom = 5; return s
 
 func toggle() -> void:
-	_collapsed = not _collapsed; collapse.text = "+" if _collapsed else "-"; rows.visible = not _collapsed; popup.visible = false
+	_collapsed = not _collapsed; collapse.text = "▸" if _collapsed else "▾"; rows.visible = not _collapsed; popup.visible = false
 
 func _build_popup(root: Control) -> void:
 	popup = PanelContainer.new(); popup.visible = false; popup.custom_minimum_size = Vector2(180, 0)
@@ -59,18 +61,24 @@ func refresh() -> void:
 	for c in rows.get_children(): c.queue_free()
 	_row_nodes.clear()
 	var ids := Net.players.keys()
-	ids.sort()
-	title.text = "Players (%d)" % ids.size()
+	ids.sort_custom(func(a, b):      # Roblox order: you first, everyone else A to Z
+		if a == Net.my_id: return true
+		if b == Net.my_id: return false
+		return str(Net.players[a].get("name", "")).to_lower() < str(Net.players[b].get("name", "")).to_lower())
+	count_label.text = "%d" % ids.size()
 	for id in ids:
 		var info: Dictionary = Net.players[id]; var me: bool = id == Net.my_id
 		var b := Button.new(); b.custom_minimum_size = Vector2(0, ROW_H); b.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.focus_mode = Control.FOCUS_NONE
-		var base := _row_style(Color(0.04, 0.04, 0.05, 0.62), 10)
-		var hov := _row_style(Color(1, 1, 1, 0.22), 10)
+		var base := _row_style(Color(0.2, 0.22, 0.28, 0.72) if me else Color(0.03, 0.03, 0.04, 0.58), 8)
+		var hov := _row_style(Color(1, 1, 1, 0.24), 8)
+		if me: base.border_color = Color(1, 1, 1, 0.35); base.set_border_width_all(1)
 		for st in ["normal", "disabled"]: b.add_theme_stylebox_override(st, base)
 		for st in ["hover", "pressed", "focus"]: b.add_theme_stylebox_override(st, hov if not me else base)
 		var h := HBoxContainer.new(); h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); h.offset_left = 6; h.offset_right = -10; h.mouse_filter = Control.MOUSE_FILTER_IGNORE; h.add_theme_constant_override("separation", 8); b.add_child(h)
-		var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 26, _face_color(info)); h.add_child(chip)
+		var chip := AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 24, _face_color(info)); h.add_child(chip)
 		var n := Label.new(); n.text = str(info.get("name", "?")); n.size_flags_horizontal = Control.SIZE_EXPAND_FILL; n.clip_text = true; n.mouse_filter = Control.MOUSE_FILTER_IGNORE; n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		n.add_theme_font_size_override("font_size", 16); n.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85)); n.add_theme_constant_override("outline_size", 4)
+		if Net.muted.has(id) and not Net.blocked.has(id): n.text += "  (muted)"
 		if Net.blocked.has(id): n.modulate = Color(1, 1, 1, 0.4); n.text += " (blocked)"
 		h.add_child(n)
 		if not me: b.pressed.connect(func(): _open_popup(id, b))
