@@ -1,4 +1,5 @@
 import http from "node:http";
+import admin from "firebase-admin";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
@@ -9,9 +10,10 @@ import { Room, CFG } from "../games/baseplate.js";
 import { flushStats } from "../leaderboards/stats.js";
 
 const PORT = +process.env.PORT || 8787;
+const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || "AIzaSyCdEvulpM-5MGOTqQhcIrCaeylSMzXtoaA";
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:8000").split(",").map(s => s.trim());
 const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
-const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map();
+const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
 const CHARACTER_PARTS = {
@@ -59,6 +61,43 @@ const server = http.createServer(async (req, res) => {
     let raw = ""; for await (const c of req) { raw += c; if (raw.length > 2048) { const e = new Error("too large"); e.status = 413; throw e; } }
     return JSON.parse(raw || "{}");
   };
+  if (req.url === "/auth/username") {
+    try {
+      const body = await readBody();
+      const username = String(body.username || "").trim();
+      const password = String(body.password || "");
+      if (!/^[A-Za-z0-9_]{3,20}$/.test(username) || !password) return out(401, { error: "INVALID_LOGIN_CREDENTIALS" });
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+      if (tooMany(usernameLoginHits, ip, 10, 60000)) return out(429, { error: "TOO_MANY_ATTEMPTS" });
+      const uid = await store.findUidByUsername(username);
+      if (!uid) return out(401, { error: "INVALID_LOGIN_CREDENTIALS" });
+      const account = await admin.auth().getUser(uid);
+      if (!account.email) return out(401, { error: "INVALID_LOGIN_CREDENTIALS" });
+      const response = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + FIREBASE_WEB_API_KEY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: account.email, password, returnSecureToken: true })
+      });
+      const verified = await response.json().catch(() => ({}));
+      if (!response.ok || verified.localId !== uid) return out(401, { error: "INVALID_LOGIN_CREDENTIALS" });
+      const customToken = await store.createUserCustomToken(uid);
+      return out(200, { customToken });
+    } catch {
+      return out(503, { error: "USERNAME_LOGIN_UNAVAILABLE" });
+    }
+  }
+  if (req.url === "/notifications") {
+    try {
+      const body = await readBody();
+      const tok = (req.headers.authorization || "").replace(/^Bearer /, "");
+      let u; try { u = await verifyToken(tok); } catch { return out(401, { error: "not signed in" }); }
+      if (body.action === "mark-read") await store.markNotificationsRead(u.uid);
+      const items = await store.listNotifications(u.uid);
+      return out(200, { items });
+    } catch {
+      return out(500, { error: "Could not load notifications." });
+    }
+  }
   if (req.url === "/profile" || req.url === "/game-feedback") {
     try {
       const body = await readBody();
