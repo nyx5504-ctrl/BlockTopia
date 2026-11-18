@@ -9,7 +9,7 @@ import { PALETTE, PART_DEFAULTS } from "./palette.js";
 import { CONFIG } from "./config.js";
 
 const SECTIONS = ["account", "security", "privacy", "language"];
-let stopDevices = null, devices = [];
+let stopDevices = null, devices = [], blocks = [];
 
 const save = patch => F.updateDoc(F.doc(db, "users", S.user.uid), patch).then(() => { Object.assign(S.profile, patch); return true; }).catch(() => { toast(t("err_generic"), "bad"); return false; });
 const validHex = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
@@ -100,6 +100,7 @@ export function showSection(id) {
   $$("[data-sec]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.sec === id)));
   $$("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== id; });
   if (id === "security") startDevices(); else { stopDevices?.(); stopDevices = null; }
+  if (id === "privacy") loadBlocks();
   if (location.hash !== "#/settings/" + id) history.replaceState(null, "", "#/settings/" + id);
 }
 
@@ -117,6 +118,7 @@ export function renderAccount() {
   $("#setEmail").textContent = u.email || "";
   $("#setVerified").textContent = t(u.emailVerified ? "verified" : "unverified");
   $("#resend2").hidden = u.emailVerified;
+  $("#pwOpen").closest(".srow").hidden = !u.providerData.some(x => x.providerId === "password");   // Google-only accounts have no password to change
   $("#selReq").value = p.allowRequests === "none" ? "none" : "everyone";
   $("#selJoin").value = p.allowJoin === "nobody" ? "nobody" : "friends";
   applyTheme(document.documentElement.dataset.theme);
@@ -144,6 +146,23 @@ async function pushToGame(character) {
     const token = await auth.currentUser.getIdToken();
     await fetch((CONFIG.BACKEND_URL || "").replace(/\/+$/, "") + "/profile", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ character }) });
   } catch {}
+}
+
+// Blocked players (Privacy). The game server writes the list; the owner can read it and unblock here.
+async function loadBlocks() {
+  if (!S.user) return;
+  try {
+    const snap = await F.getDocs(F.collection(db, "blocks", S.user.uid, "list"));
+    blocks = await Promise.all(snap.docs.map(async d => {
+      try { const u = await F.getDoc(F.doc(db, "users", d.id)); return { id: d.id, ...(u.exists() ? u.data() : {}) }; } catch { return { id: d.id }; }
+    }));
+    blocks.sort((a, b) => String(a.username || "~").localeCompare(String(b.username || "~")));
+  } catch { blocks = []; $("#blockList").innerHTML = `<p class="empty">${esc(t("err_generic"))}</p>`; return; }
+  renderBlocks();
+}
+export function renderBlocks() {
+  const box = $("#blockList"); if (!box) return;
+  box.innerHTML = blocks.length ? blocks.map(b => `<div class="row"><div class="grow" style="display:flex;align-items:center;gap:12px">${avatar(b.username, b.avatarColor, "sm", b.character)}<div class="name">${esc(b.username || "?")}</div></div><button class="btn sm" data-unblock="${esc(b.id)}" type="button">${esc(t("unblock"))}</button></div>`).join("") : `<p class="empty">${esc(t("blocked_none"))}</p>`;
 }
 
 export function initSettings() {
@@ -210,6 +229,11 @@ export function initSettings() {
     b.onclick = async () => { applyTheme(b.dataset.themePick); if (await save({ theme: b.dataset.themePick })) toast(t("saved")); };
   });
   // devices
+  $("#blockList").addEventListener("click", async e => {
+    const b = e.target.closest("[data-unblock]"); if (!b) return;
+    try { await F.deleteDoc(F.doc(db, "blocks", S.user.uid, "list", b.dataset.unblock)); blocks = blocks.filter(x => x.id !== b.dataset.unblock); renderBlocks(); toast(t("unblocked_ok")); }
+    catch { toast(t("err_generic"), "bad"); }
+  });
   $("#devList").addEventListener("click", async e => {
     const o = e.target.closest("[data-dev-out]"), r = e.target.closest("[data-dev-remove]");
     try {
@@ -219,4 +243,4 @@ export function initSettings() {
   });
 }
 
-export function stopSettings() { stopDevices?.(); stopDevices = null; devices = []; }
+export function stopSettings() { stopDevices?.(); stopDevices = null; devices = []; blocks = []; }

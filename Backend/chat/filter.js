@@ -38,6 +38,33 @@ const HARM = [
 // Arabic starter list (normalised: no diacritics, ا for أإآ, ي for ى, ه for ة). Have a native speaker review and extend it.
 const AR_WORDS = new Set(["شرموطه", "شرموط", "شراميط", "قحبه", "قحاب", "عرص", "عرصه", "منيوك", "منيوكه", "متناك", "كسمك", "كسختك"]);
 const AR_PHRASES = ["كس امك", "كس اختك", "ابن الكلب", "ابن الشرموطه", "ابن القحبه", "يلعن ابوك", "يلعن امك", "يلعن دينك"];
+// v1.6 additions: more English compounds/slurs, sexual and predatory words, and distinctive words from other languages written in Latin letters.
+for (const w of [
+  "bitchy", "bitchass", "fuckface", "fuckwit", "fuckboy", "shithead", "shitface", "shitbag", "dumbfuck", "dipshit", "asshat", "assclown", "assfuck", "dickface", "cockhead", "twatwaffle",
+  "niggas", "niggers", "niggaz", "fagot", "faggots", "fags", "lesbo", "shemale", "trannies", "mongoloid", "wetback", "beaner", "towelhead", "raghead", "sandnigger",
+  "pedo", "pedos", "pedophile", "paedophile", "paedo", "molest", "molester", "rapist", "rapey", "groomer",
+  "dickpic", "dickpics", "fap", "fapping", "cumming", "cumslut", "creampie", "gangbang", "bukkake", "threesome", "orgy", "blowjobs", "handjobs", "ejaculate", "semen", "pornhub", "onlyfans",
+  // German, French, Spanish, Portuguese, Turkish, Russian, Hindi/Urdu (Latin letters)
+  "scheisse", "scheiss", "scheisskerl", "arschloch", "wichser", "hurensohn", "fotze", "schlampe", "hure", "fickdich",
+  "encule", "enculer", "enculee", "niquer", "salopes", "pute", "putes", "connasse", "branleur",
+  "hijueputa", "hijoeputa", "hdp", "gilipollas", "maricon", "maricones", "culo", "mamaguevo", "pajero", "cojones", "mamahuevo",
+  "caralho", "foder", "fodase", "buceta", "arrombado", "filhodaputa",
+  "orospu", "oruspu", "siktir", "sikerim", "sikik", "yarrak", "yarak", "gotveren", "amcik",
+  "blyat", "blyad", "blyat", "pizda", "pizdec", "ebat", "yebat", "mudak", "pidor", "pidar", "pidoras", "khuy", "ebanat",
+  "madarchod", "behenchod", "bhenchod", "chutiya", "chutiye", "gandu", "bhosdike", "bhosdiwale", "harami", "kamina", "kutta",
+]) BAD_WORDS.add(w);
+for (const w of ["طيز", "عاهره", "خول", "خرا", "قواد", "قواده", "زانيه", "ابن الزانيه", "منيوكه", "ولد الزنا"]) { if (w.includes(" ")) AR_PHRASES.push(w); else AR_WORDS.add(w); }
+for (const re of [
+  /\bi\s*(hope|wish)\s*(you|u|ya)\s*(die|get\s*(cancer|killed|raped)|burn|rot)\b/, /\b(you|u|ya)\s*(should|need\s*to|deserve\s*to|better)\s*(just\s*)?(die|be\s*killed|disappear)\b/,
+  /\bshoot\s*up\s*(the|a|my|our)\s*(school|class|room)\b/, /\bnobody\s*(would\s*)?(miss|care\s*about|loves)\s*(you|u)\b/,
+  /\bi\s*(want|wanna|am\s*going)\s*to?\s*(die|kill\s*myself)\b/, /\bi\s*wanna\s*die\b/, /\bkms\b/, /\bkill\s*myself\b/,
+]) HARM.push(re);
+// Predatory / grooming lines are blocked outright (never just masked) and show a safety message.
+const SAFETY = [
+  /\b(don'?t|do\s*not|dont)\s*tell\s*(your\s*|ur\s*|any\s*)?(mom|mum|dad|parents?|anyone|anybody|teacher)\b/, /\bour\s*(little\s*)?secret\b/,
+  /\b(are|r)\s*(you|u)\s*(home\s*)?alone\b/, /\b(send|show)\s*(me\s*)?(a\s*)?(pic|picture|photo|selfie)s?\s*of\s*(you|u|urself|yourself)\b/, /\bsend\s*(me\s*)?(nudes?|pics)\b/,
+  /\bhow\s*old\s*(are|r)\s*(you|u)\b/, /\b(are|r)\s*(you|u)\s*(a\s*)?(boy|girl|male|female)\b/, /\b(be|become)\s*my\s*(girlfriend|boyfriend|gf|bf)\b/, /\bmeet\s*(me|up)\s*(irl|in\s*real\s*life|in\s*person)\b/,
+];
 for (const w of (process.env.CHAT_EXTRA_BAD_WORDS || "").split(",")) { const x = w.trim().toLowerCase(); if (x) BAD_WORDS.add(x); }
 
 const LEET = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "9": "g", "@": "a", "$": "s", "!": "i", "+": "t", "|": "i", "€": "e", "¢": "c", "£": "l" };
@@ -138,6 +165,7 @@ export function checkMessage(raw) {
   // HARM (threats / self-harm) is always blocked, never just masked.
   const plainAll = normLatin(text), leetAll = leetOf(plainAll);
   for (const re of HARM) if (re.test(leetAll.replace(/\s+/g, " "))) return { ok: false, reason: "harm" };
+  for (const re of SAFETY) if (re.test(plainAll.replace(/\s+/g, " "))) return { ok: false, reason: "safety" };
 
   // Bad language: work word by word on the ORIGINAL text so only the bad words are hidden.
   const chunks = text.split(" "), hit = new Array(chunks.length).fill(false);
@@ -185,6 +213,7 @@ export function checkSplit(prevRaw, curRaw) {
 export const FRIENDLY = {
   language: "Let's keep BlockTopia friendly! Your message wasn't sent.",
   harm: "Threats and messages about hurting yourself or others aren't allowed. If you're struggling, please talk to someone you trust.",
+  safety: "For your safety, some questions and requests aren't allowed in chat. Your message wasn't sent.",
   personal: "For your safety, don't share personal info or links. Your message wasn't sent.",
   spam: "That looks like spam. Your message wasn't sent.",
   long: "Message too long (150 characters max).", empty: "", invalid: "",

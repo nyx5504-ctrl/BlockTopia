@@ -50,7 +50,8 @@ service cloud.firestore {
     // Written only by the game server (Admin SDK bypasses these rules):
     match /presence/{uid} { allow read: if authed(); }
     match /stats/{uid}    { allow read: if authed(); }
-    match /blocks/{uid}/list/{t} { allow read: if authed() && request.auth.uid == uid; }   // written by the game server
+    // Blocked players: the game server writes them; the owner can read the list and unblock (delete) from the website.
+    match /blocks/{uid}/list/{t} { allow read, delete: if authed() && request.auth.uid == uid; }
     match /reports/{id}   { allow read, write: if false; }
   }
 }

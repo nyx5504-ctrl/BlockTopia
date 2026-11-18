@@ -25,6 +25,11 @@ try {
   ok(checkMessage("what the f*ck man").text === "what the #### man", "only the bad word is hidden");
   for (const good of ["hello everyone!", "I love this game", "assume the class passed", "Scunthorpe is a town"]) ok(checkMessage(good).ok, `allows: ${good}`);
 
+  console.log("filter v1.6 additions");
+  for (const bad of ["du arschloch", "you pedo", "hijueputa", "siktir git", "blyat", "madarchod", "قال خول"]) { const r = checkMessage(bad); ok(r.ok && r.masked && /#/.test(r.text), `masks: ${bad} -> ${r.text}`); }
+  for (const bad of ["send nudes", "dont tell your mom", "are you home alone", "kms", "i hope you die", "meet me irl"]) ok(!checkMessage(bad).ok, `blocks: ${bad}`);
+  for (const good of ["my pet is a pedometer", "how old is this game", "are you a good player", "pizza time", "see you later"]) { const r = checkMessage(good); ok(r.ok && !r.masked, `allows: ${good}`); }
+
   console.log("launch + auth");
   ok((await fetch(base + "/launch", { method:"POST", body:"{}" })).status === 401, "launch without token rejected");
   const l1 = await launch("alice"), l2 = await launch("bob");
@@ -81,6 +86,20 @@ try {
   ok(viaWeb.status === 200, "website/app profile save accepted");
   ok(await B.wait(m => m.t === "character" && m.id === wa.id && m.character.parts.head.color === "#c4281c"), "saving on the website updates everyone already in game");
   ok(await A.wait(m => m.t === "character" && m.id === wa.id && m.saved && m.character.bodyType === "slim"), "...including yourself");
+
+  console.log("app sign-in link (Continue with Google in the native app)");
+  const post = (path, body, tok) => fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(tok ? { Authorization: "Bearer " + tok } : {}) }, body: JSON.stringify(body) });
+  const st = await (await post("/auth/device/start", {})).json();
+  ok(/^[0-9a-f]{32}$/.test(st.code) && /^[A-Z2-9]{3}-[A-Z2-9]{3}$/.test(st.userCode) && st.secret && st.secret !== st.code, "start returns a link code, a separate poll secret and a short confirm code");
+  ok((await (await post("/auth/device/info", { code: st.code })).json()).userCode === st.userCode, "website can read the confirm code from the link code");
+  ok((await (await post("/auth/device/poll", { secret: st.secret })).json()).status === "pending", "poll is pending before approval");
+  ok((await post("/auth/device/poll", { secret: st.code })).status === 404, "the link code can't be used as the poll secret");
+  ok((await post("/auth/device/approve", { code: st.code })).status === 401, "approve needs a signed-in user");
+  ok((await post("/auth/device/approve", { code: "0".repeat(32) }, "dev:zed:zed")).status === 404, "approve with an unknown code fails");
+  ok((await post("/auth/device/approve", { code: st.code }, "dev:zed:zed")).status === 200, "signed-in user approves the code");
+  const done = await (await post("/auth/device/poll", { secret: st.secret })).json();
+  ok(done.status === "ok" && done.customToken === "dev-custom:zed", "app collects the token for the approving user");
+  ok((await post("/auth/device/poll", { secret: st.secret })).status === 404, "token can only be collected once");
 
   console.log("capacity, reconnect, leave");
   const l3 = await launch("carol"); const C = client(l3.code); await C.wait(m => m.t === "welcome");

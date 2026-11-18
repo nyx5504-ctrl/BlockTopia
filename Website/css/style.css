@@ -324,3 +324,11 @@ select.input { width: auto; min-width: 150px; height: 42px; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .loader.run .bar i { width: 100%; }
 }
+
+/* Google sign-in, app sign-in approval, blocked list */
+.btn.google { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.btn.google .ic { width: 18px; height: 18px; stroke: none; }
+.or { display: flex; align-items: center; gap: 12px; margin: 14px 0 16px; color: var(--faint); font-size: 13px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.auth-note { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--muted); font-size: 14px; text-align: center; }
+.linkcode { font-size: 32px; font-weight: 800; letter-spacing: .12em; text-align: center; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); }

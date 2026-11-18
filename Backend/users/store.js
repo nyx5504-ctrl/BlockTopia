@@ -51,6 +51,7 @@ export async function findUidByUsername(username) {
 }
 
 export async function createUserCustomToken(uid) {
+  if (process.env.DEV_AUTH === "1" && !admin.apps.length) return "dev-custom:" + uid;   // local tests only
   return admin.auth().createCustomToken(uid);
 }
 

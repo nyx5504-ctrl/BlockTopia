@@ -13,7 +13,7 @@ const PORT = +process.env.PORT || 8787;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || "AIzaSyCdEvulpM-5MGOTqQhcIrCaeylSMzXtoaA";
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:8000").split(",").map(s => s.trim());
 const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
-const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map();
+const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map(), deviceLinks = new Map(), deviceHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
 const CHARACTER_PARTS = {
@@ -91,6 +91,44 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return out(503, { error: "USERNAME_LOGIN_UNAVAILABLE" });
     }
+  }
+  // ---- "Continue with Google" in the native app: the app opens the website, the signed-in user approves a short code there, the app collects a custom token ----
+  if (req.url.startsWith("/auth/device/")) {
+    try {
+      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+      if (tooMany(deviceHits, ip, 40, 60000)) return out(429, { error: "TOO_MANY_ATTEMPTS" });
+      const now = Date.now();
+      for (const [k, v] of deviceLinks) if (now - v.at > 5 * 60000) deviceLinks.delete(k);
+      const body = await readBody();
+      if (req.url === "/auth/device/start") {
+        if (deviceLinks.size > 5000) return out(503, { error: "busy" });
+        const code = rnd(16), secret = rnd(16), alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        const userCode = Array.from(crypto.randomBytes(6), b => alphabet[b % alphabet.length]).join("");
+        deviceLinks.set(code, { at: now, secret, userCode: userCode.slice(0, 3) + "-" + userCode.slice(3), token: null });
+        return out(200, { code, secret, userCode: deviceLinks.get(code).userCode, expiresIn: 300 });
+      }
+      const link = deviceLinks.get(String(body.code || ""));
+      if (req.url === "/auth/device/info") {
+        if (!link) return out(404, { error: "expired" });
+        return out(200, { userCode: link.userCode });
+      }
+      if (req.url === "/auth/device/approve") {
+        const tok = (req.headers.authorization || "").replace(/^Bearer /, "");
+        let u; try { u = await verifyToken(tok); } catch { return out(401, { error: "not signed in" }); }
+        if (!link) return out(404, { error: "expired" });
+        if (link.token) return out(200, { ok: true });
+        link.token = await store.createUserCustomToken(u.uid);
+        return out(200, { ok: true });
+      }
+      if (req.url === "/auth/device/poll") {
+        const code = [...deviceLinks.entries()].find(([, v]) => v.secret === String(body.secret || ""));
+        if (!code) return out(404, { error: "expired" });
+        if (!code[1].token) return out(200, { status: "pending" });
+        deviceLinks.delete(code[0]);
+        return out(200, { status: "ok", customToken: code[1].token });
+      }
+      return out(404, { error: "not found" });
+    } catch { return out(500, { error: "device link unavailable" }); }
   }
   if (req.url === "/notifications") {
     try {
@@ -228,7 +266,7 @@ function handleChat(p, m) {
     if (now - (p.lastMaskNote || 0) > 30000) { p.lastMaskNote = now; r.send(p, { t: "sys", text: "Some words were hidden. Let's keep BlockTopia friendly!" }); }
   }
   if (!v.ok) {
-    if (v.reason === "language" || v.reason === "personal") { p.strikes = p.strikes.filter(t => now - t < 300000); p.strikes.push(now); if (p.strikes.length >= 5) { p.cooldownUntil = now + 60000; p.strikes = []; return warn("cooldown"); } }
+    if (v.reason === "language" || v.reason === "personal" || v.reason === "safety") { p.strikes = p.strikes.filter(t => now - t < 300000); p.strikes.push(now); if (p.strikes.length >= 5) { p.cooldownUntil = now + 60000; p.strikes = []; return warn("cooldown"); } }
     return warn(v.reason);
   }
   p.lastMsg = v.text.toLowerCase(); p.lastOkAt = now; p.msgCount++;

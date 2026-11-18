@@ -15,9 +15,10 @@ export class AppErr extends Error { constructor(key) { super(key); this.key = ke
 export const errKey = e => e?.key || CODES[e?.code] || "err_generic";
 const setErr = (sel, key) => { $(sel).textContent = key ? t(key) : ""; };
 
-export function showAuthPane(name) {   // login | signup | forgot | sent
-  for (const [id, n] of [["formLogin", "login"], ["formSignup", "signup"], ["formForgot", "forgot"], ["formSent", "sent"]]) $("#" + id).hidden = n !== name;
-  $("#authTabs").hidden = name === "forgot" || name === "sent";
+export function showAuthPane(name) {   // login | signup | pick | forgot | sent
+  for (const [id, n] of [["formLogin", "login"], ["formSignup", "signup"], ["formPick", "pick"], ["formForgot", "forgot"], ["formSent", "sent"]]) $("#" + id).hidden = n !== name;
+  $("#authTabs").hidden = name === "forgot" || name === "sent" || name === "pick";
+  $("#authAlt").hidden = name === "forgot" || name === "sent" || name === "pick";
   $("#tabLogin").classList.toggle("on", name === "login");
   $("#tabSignup").classList.toggle("on", name === "signup");
   $$(".err").forEach(e => { e.textContent = ""; });
@@ -118,6 +119,47 @@ export function initAuthUI({ onSignedUp }) {
     } catch (err) { S.signingUp = false; setErr("#suErr", errKey(err)); }
     finally { S.signingUp = false; busy(btn, false); }
   });
+
+
+  // --- Continue with Google ---
+  // New Google accounts first choose a username (same rules as sign up); S.signingUp keeps the auth listener from racing the profile creation.
+  const provider = new A.GoogleAuthProvider(); provider.setCustomParameters({ prompt: "select_account" });
+  let googleUser = null;
+  $("#googleBtn").onclick = async () => {
+    const btn = $("#googleBtn"); setErr("#goErr"); btn.disabled = true; S.signingUp = true;
+    try {
+      await A.setPersistence(auth, A.browserLocalPersistence);
+      const user = (await A.signInWithPopup(auth, provider)).user;
+      if ((await F.getDoc(F.doc(db, "users", user.uid))).exists()) { S.signingUp = false; await onSignedUp(user); return; }
+      googleUser = user;
+      const stem = String(user.displayName || user.email || "").split("@")[0].replace(/[^A-Za-z0-9_]/g, "").slice(0, 20);
+      $("#pkUser").value = stem.length >= 3 ? stem : ""; $("#pkUserHint").textContent = t("username_hint"); $("#pkUserHint").className = "hint";
+      showAuthPane("pick"); $("#pkUser").focus();
+    } catch (err) {
+      S.signingUp = false;
+      if (err?.code === "auth/popup-blocked") { try { await A.signInWithRedirect(auth, provider); return; } catch { /* fall through */ } }
+      if (!["auth/popup-closed-by-user", "auth/cancelled-popup-request", "auth/user-cancelled"].includes(err?.code))
+        setErr("#goErr", err?.code === "auth/account-exists-with-different-credential" ? "err_email_used" : errKey(err) === "err_generic" ? "err_google" : errKey(err));
+    } finally { btn.disabled = false; }
+  };
+  $("#formPick").addEventListener("submit", async e => {
+    e.preventDefault();
+    const username = $("#pkUser").value.trim(), btn = $("#pkBtn");
+    if (!googleUser) return showAuthPane("login");
+    if (!USER_RE.test(username)) return setErr("#pkErr", "user_bad");
+    setErr("#pkErr"); busy(btn, true, t("busy"));
+    try {
+      await createProfile(googleUser, username);
+      const u = googleUser; googleUser = null; S.signingUp = false;
+      await onSignedUp(u);
+    } catch (err) { setErr("#pkErr", errKey(err)); }
+    finally { busy(btn, false); }
+  });
+  $("#pkCancel").onclick = async () => {
+    googleUser = null;
+    try { await A.signOut(auth); } catch { /* ignore */ }
+    S.signingUp = false; showAuthPane("login");
+  };
 
   // --- forgot password ---
   $("#formForgot").addEventListener("submit", async e => {

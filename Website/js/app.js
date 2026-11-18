@@ -1,7 +1,7 @@
 // BlockTopia — boots the single page: language -> auth state -> router.
 import { auth, db, A, F } from "./fb.js";
 import { S, on } from "./state.js";
-import { $, $$, avatar, initModals, toast, esc } from "./ui.js";
+import { $, $$, avatar, initModals, toast, esc, openModal, closeModal } from "./ui.js";
 import { initI18n, applyDom, onLangChange, t } from "./i18n.js";
 import { initLangUI, refreshLangLabels } from "./langui.js";
 import { initAuthUI, showAuthPane, createProfile, errKey } from "./auth.js";
@@ -9,10 +9,35 @@ import { initPlay, warmServer, showDownloads } from "./play.js";
 import { initHome, renderHome, loadStats } from "./games.js";
 import { initFriends, startFriends, renderFriends, stopListeners } from "./friends.js";
 import { initAlerts, startAlerts, renderAlerts, renderBadges } from "./alerts.js";
-import { initSettings, renderCustomize, showSection, renderAccount, renderSecurity, applyTheme, stopSettings } from "./settings.js";
+import { initSettings, renderCustomize, showSection, renderAccount, renderSecurity, renderBlocks, applyTheme, stopSettings } from "./settings.js";
+import { CONFIG } from "./config.js";
 import { registerDevice, startHeartbeat, stopHeartbeat, watchSelf } from "./devices.js";
 
 const ROUTES = ["home", "friends", "alerts", "customize", "settings"];
+
+// "Continue with Google" in the native app opens this site as ?link=<code>. Read it now: leave() trims the query string.
+const rawLink = new URLSearchParams(location.search).get("link");
+let pendingLink = /^[0-9a-f]{32}$/.test(rawLink || "") ? rawLink : null;
+const api = path => (CONFIG.BACKEND_URL || "").replace(/\/+$/, "") + path;
+async function offerLink() {
+  const code = pendingLink; if (!code) return;
+  try {
+    const r = await fetch(api("/auth/device/info"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+    if (!r.ok) throw new Error("expired");
+    $("#linkCode").textContent = (await r.json()).userCode; $("#linkErr").textContent = "";
+    openModal($("#linkModal"));
+  } catch { pendingLink = null; toast(t("link_expired"), "bad"); }
+}
+async function approveLink() {
+  const btn = $("#linkOk"); btn.disabled = true; $("#linkErr").textContent = "";
+  try {
+    const token = await auth.currentUser.getIdToken();
+    const r = await fetch(api("/auth/device/approve"), { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ code: pendingLink }) });
+    if (!r.ok) throw new Error(String(r.status));
+    pendingLink = null; closeModal($("#linkModal")); toast(t("link_done"));
+  } catch { $("#linkErr").textContent = t("link_expired"); }
+  finally { btn.disabled = false; }
+}
 
 function route() {
   if (!S.user) return;
@@ -68,6 +93,8 @@ async function enter(u) {
   } catch (e) { console.warn("device", e); }
   if (!location.hash || location.hash === "#/") location.hash = "#/home";
   route();
+  $("#linkNote").hidden = true;
+  if (pendingLink) offerLink();
 }
 
 function leave() {
@@ -77,14 +104,16 @@ function leave() {
   $("#formLogin").reset(); $("#formSignup").reset(); $("#suMeter").style.width = "0";
   showAuthPane("login"); applyDom(); document.title = "BlockTopia";
   history.replaceState(null, "", location.pathname);
+  $("#linkNote").hidden = !pendingLink;
 }
 
 async function main() {
   await initI18n();
   initModals(); initLangUI(); initPlay(); initHome(); initFriends(); initAlerts(); initSettings();
   initAuthUI({ onSignedUp: async u => { await enter(u); } });
+  $("#linkOk").onclick = approveLink;
 
-  onLangChange(() => { paintUser(); if (S.user) { renderBadges(); route(); if (!$("#v-settings").hidden) renderSecurity(); } refreshLangLabels(); });
+  onLangChange(() => { paintUser(); if (S.user) { renderBadges(); route(); if (!$("#v-settings").hidden) { renderSecurity(); renderBlocks(); } } refreshLangLabels(); });
   document.addEventListener("profilechange", paintUser);
   window.addEventListener("hashchange", route);
   window.addEventListener("focus", async () => { const u = auth.currentUser; if (u && !u.emailVerified) { try { await u.reload(); paintUser(); } catch {} } });
