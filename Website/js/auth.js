@@ -3,6 +3,7 @@ import { auth, db, A, F } from "./fb.js";
 import { S } from "./state.js";
 import { $, $$, busy } from "./ui.js";
 import { t } from "./i18n.js";
+import { CONFIG } from "./config.js";
 
 const USER_RE = /^[A-Za-z0-9_]{3,20}$/;
 const CODES = {
@@ -38,7 +39,7 @@ export async function createProfile(user, username) {
 export function initAuthUI({ onSignedUp }) {
   $("#tabLogin").onclick = () => showAuthPane("login");
   $("#tabSignup").onclick = () => showAuthPane("signup");
-  $("#toForgot").onclick = () => { $("#fgEmail").value = $("#liEmail").value; showAuthPane("forgot"); };
+  $("#toForgot").onclick = () => { const value = $("#liEmail").value.trim(); $("#fgEmail").value = value.includes("@") ? value : ""; showAuthPane("forgot"); };
   $$("[data-back-login]").forEach(b => { b.onclick = () => showAuthPane("login"); });
   $$("[data-eye]").forEach(b => {
     b.onclick = () => {
@@ -52,12 +53,25 @@ export function initAuthUI({ onSignedUp }) {
   // --- log in ---
   $("#formLogin").addEventListener("submit", async e => {
     e.preventDefault();
-    const email = $("#liEmail").value.trim(), pw = $("#liPw").value, btn = $("#liBtn");
-    if (!email || !pw) return setErr("#liErr", "err_required");
+    const identifier = $("#liEmail").value.trim(), pw = $("#liPw").value, btn = $("#liBtn");
+    if (!identifier || !pw) return setErr("#liErr", "err_required");
     setErr("#liErr"); busy(btn, true, t("busy"));
     try {
       await A.setPersistence(auth, $("#liRemember").checked ? A.browserLocalPersistence : A.browserSessionPersistence);
-      await A.signInWithEmailAndPassword(auth, email, pw);
+      if (identifier.includes("@")) {
+        await A.signInWithEmailAndPassword(auth, identifier, pw);
+      } else {
+        let response;
+        try {
+          response = await fetch(CONFIG.BACKEND_URL + "/auth/username", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: identifier, password: pw })
+          });
+        } catch { throw new AppErr("err_network"); }
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.customToken) throw new AppErr(response.status === 429 ? "err_many" : response.status >= 500 ? "err_network" : "err_login");
+        await A.signInWithCustomToken(auth, result.customToken);
+      }
     } catch (err) { setErr("#liErr", errKey(err)); }
     finally { busy(btn, false); }
   });

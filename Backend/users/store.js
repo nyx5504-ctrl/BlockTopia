@@ -39,6 +39,39 @@ export async function createProfile(uid, username) {
   });
   return await getUser(uid);
 }
+export async function findUidByUsername(username) {
+  const usernameLower = String(username || "").trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(usernameLower)) return "";
+  if (!db) {
+    for (const [uid, user] of mem.users) if (user.usernameLower === usernameLower) return uid;
+    return "";
+  }
+  const snap = await db.doc("usernames/" + usernameLower).get();
+  return snap.exists ? String(snap.data().uid || "") : "";
+}
+
+export async function createUserCustomToken(uid) {
+  return admin.auth().createCustomToken(uid);
+}
+
+export async function listNotifications(uid) {
+  if (!db) return [];
+  const snap = await db.collection("notifications/" + uid + "/items").orderBy("createdAt", "desc").limit(30).get();
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function markNotificationsRead(uid) {
+  if (!db) return;
+  const collection = db.collection("notifications/" + uid + "/items");
+  while (true) {
+    const snap = await collection.where("read", "==", false).limit(400).get();
+    if (snap.empty) return;
+    const batch = db.batch();
+    for (const doc of snap.docs) batch.update(doc.ref, { read: true });
+    await batch.commit();
+  }
+}
+
 export async function getGameReaction(uid, game) {
   if (!db) return mem.gameReactions.get(`${game}:${uid}`) || "";
   const ref = db.doc(`games/${game}/reactions/${uid}`), likeRef = db.doc(`games/${game}/likes/${uid}`);

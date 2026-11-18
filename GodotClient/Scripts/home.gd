@@ -47,7 +47,7 @@ func _ready() -> void:
 	var bg := ColorRect.new(); bg.color = Color(0.043, 0.043, 0.047); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
 	_scroll = ScrollContainer.new(); _scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; add_child(_scroll)
 	_center = CenterContainer.new(); _center.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _scroll.add_child(_center)
-	_col = VBoxContainer.new(); _col.add_theme_constant_override("separation", 14); _center.add_child(_col)
+	_col = VBoxContainer.new(); _col.add_theme_constant_override("separation", 14); _col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _center.add_child(_col)
 	_build_sidebar()
 	_http = HTTPRequest.new(); _http.timeout = 20.0; add_child(_http)
 	get_viewport().size_changed.connect(_fit); _fit()
@@ -83,7 +83,7 @@ func _fit() -> void:
 	_scroll.offset_left = 244.0 if desktop_nav else 0.0
 	_scroll.offset_right = 0.0
 	var available := vs.x - (276.0 if desktop_nav else (76.0 if auth_screen else 32.0))
-	var max_width := 480.0 if auth_screen else (520.0 if _screen == "loading" else 1120.0)
+	var max_width := 420.0 if auth_screen else (520.0 if _screen == "loading" else 1120.0)
 	_col.custom_minimum_size = Vector2(clampf(available, 180.0, max_width), 0)
 	_center.custom_minimum_size = Vector2(0, maxf(vs.y - 16.0, 0.0))
 	_sync_navigation()
@@ -100,14 +100,16 @@ func _build_sidebar() -> void:
 	var mark := TextureRect.new(); mark.texture = load("res://Assets/logo.png"); mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; mark.custom_minimum_size = Vector2(36, 36); brand.add_child(mark)
 	var name := Label.new(); name.text = "BlockTopia"; name.add_theme_font_size_override("font_size", 21); name.size_flags_vertical = Control.SIZE_SHRINK_CENTER; brand.add_child(name)
 	var group := ButtonGroup.new()
-	for item in ["Dashboard", "Friends", "Customization"]:
+	for item in ["Home", "Friends", "Notifications", "Settings", "Customization"]:
 		var button := Button.new(); button.text = item; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.custom_minimum_size = Vector2(0, 46); button.toggle_mode = true; button.button_group = group
 		button.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.075, 0.075, 0.085), Color(0.075, 0.075, 0.085), 10))
 		button.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.13, 0.13, 0.15), Color(0.13, 0.13, 0.15), 10))
 		button.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10))
 		button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
-		if item == "Dashboard": button.pressed.connect(_show_dashboard)
+		if item == "Home": button.pressed.connect(_show_dashboard)
 		elif item == "Friends": button.pressed.connect(_show_friends)
+		elif item == "Notifications": button.pressed.connect(_show_notifications)
+		elif item == "Settings": button.pressed.connect(_show_settings)
 		else: button.pressed.connect(_show_customization)
 		stack.add_child(button); _side_buttons[item] = button
 	var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; stack.add_child(spacer)
@@ -120,7 +122,7 @@ func _sync_navigation() -> void:
 	if _side == null: return
 	var is_desktop := _side.visible
 	for name in _side_buttons:
-		_side_buttons[name].button_pressed = (name == "Customization" and _screen == "customization") or (name == "Friends" and _screen == "friends") or (name == "Dashboard" and _screen in ["dashboard", "details"])
+		_side_buttons[name].button_pressed = (name == "Customization" and _screen == "customization") or (name == "Friends" and _screen == "friends") or (name == "Notifications" and _screen == "notifications") or (name == "Settings" and _screen == "settings") or (name == "Home" and _screen in ["dashboard", "details"])
 	if _side_chip != null:
 		var character := _character_data() if _profile.has("character") else {"bodyColor": "#f2c744"}
 		var display := str(_profile.get("username", "Player"))
@@ -146,46 +148,54 @@ func _set_status_screen(message: String) -> void:
 
 func _add_text(value: String, font_size := 18, muted := false) -> Label:
 	var l := Label.new(); l.text = value; l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; l.add_theme_font_size_override("font_size", font_size)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; l.add_theme_font_size_override("font_size", font_size)
 	if muted: l.modulate = Color(1, 1, 1, 0.68)
 	_col.add_child(l); return l
 
 func _add_field(placeholder: String, secret := false) -> LineEdit:
 	var line := LineEdit.new(); line.placeholder_text = placeholder; line.secret = secret
-	line.custom_minimum_size = Vector2(0, 52); line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.custom_minimum_size = Vector2(0, 46); line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.clear_button_enabled = not secret; _col.add_child(line); return line
 
 func _add_button(label: String, callback: Callable, primary := false) -> Button:
-	var b := Button.new(); b.text = label; b.custom_minimum_size = Vector2(0, 52); b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.add_theme_font_size_override("font_size", 17)
+	var b := Button.new(); b.text = label; b.custom_minimum_size = Vector2(0, 46); b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.add_theme_font_size_override("font_size", 16)
 	if primary:
-		var style := ThemeBuilder.box(Color(0.2, 0.42, 0.82), Color(0.27, 0.5, 0.92), 10)
+		var style := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.98, 0.98, 0.99), 10)
 		b.add_theme_stylebox_override("normal", style); b.add_theme_stylebox_override("hover", style); b.add_theme_stylebox_override("pressed", style)
+		b.add_theme_color_override("font_color", Color(0.05, 0.05, 0.06)); b.add_theme_color_override("font_hover_color", Color(0.05, 0.05, 0.06))
 	b.pressed.connect(callback); _col.add_child(b); return b
 
 func _add_tabs(detail := false) -> void:
-	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); row.visible = get_viewport().get_visible_rect().size.x < 900.0; _col.add_child(row); _content_tabs = row
+	var scroll := ScrollContainer.new(); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO; scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, 50); scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.visible = get_viewport().get_visible_rect().size.x < 900.0; _col.add_child(scroll); _content_tabs = scroll
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); scroll.add_child(row)
 	var group := ButtonGroup.new()
 	var tab_style := ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10)
 	var tab_on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10)
-	for item in ["Dashboard", "Friends", "Customization"]:
-		var button := Button.new(); button.text = item; button.toggle_mode = true; button.button_group = group; button.custom_minimum_size = Vector2(0, 44); button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for item in ["Home", "Friends", "Notifications", "Settings", "Customization"]:
+		var button := Button.new(); button.text = item; button.toggle_mode = true; button.button_group = group; button.custom_minimum_size = Vector2(112, 44)
 		button.add_theme_stylebox_override("normal", tab_style); button.add_theme_stylebox_override("hover", tab_style); button.add_theme_stylebox_override("pressed", tab_on); button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
-		button.button_pressed = (item == "Dashboard" and _screen in ["dashboard", "details"]) or (item == "Friends" and _screen == "friends") or (item == "Customization" and _screen == "customization")
-		if item == "Dashboard": button.pressed.connect(_show_dashboard)
+		button.button_pressed = (item == "Home" and _screen in ["dashboard", "details"]) or (item == "Friends" and _screen == "friends") or (item == "Notifications" and _screen == "notifications") or (item == "Settings" and _screen == "settings") or (item == "Customization" and _screen == "customization")
+		if item == "Home": button.pressed.connect(_show_dashboard)
 		elif item == "Friends": button.pressed.connect(_show_friends)
+		elif item == "Notifications": button.pressed.connect(_show_notifications)
+		elif item == "Settings": button.pressed.connect(_show_settings)
 		else: button.pressed.connect(_show_customization)
 		row.add_child(button)
 	if detail:
-		var game := Button.new(); game.text = "Baseplate"; game.disabled = true; game.custom_minimum_size = Vector2(0, 44); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var game := Button.new(); game.text = "Baseplate"; game.disabled = true; game.custom_minimum_size = Vector2(112, 44)
 		game.add_theme_stylebox_override("normal", tab_style); row.add_child(game)
 
 func _show_auth(message := "") -> void:
 	_screen = "auth"; _show_auth_shell(); _clear()
 	var logo := TextureRect.new(); logo.texture = load("res://Assets/logo.png"); logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(96, 96); logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; _col.add_child(logo)
-	_add_text("BlockTopia", 34)
-	_add_text("Build, play and hang out in a shared world.", 16, true)
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(64, 64); logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; _col.add_child(logo)
+	var brand_title := _add_text("BlockTopia", 28)
+	brand_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var tagline := _add_text("Build, play and hang out in a shared world.", 14, true)
+	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var modes := HBoxContainer.new(); modes.add_theme_constant_override("separation", 8); _col.add_child(modes)
 	var mode_group := ButtonGroup.new()
 	for mode in ["login", "signup"]:
@@ -199,8 +209,9 @@ func _show_auth(message := "") -> void:
 	if _auth_mode == "signup":
 		_add_text("Username", 15, true)
 		_username = _add_field("3–20 letters, numbers or underscores")
-	_add_text("Email", 15, true)
-	_email = _add_field("Email address"); _email.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS
+	_add_text("Email or username" if _auth_mode == "login" else "Email", 15, true)
+	_email = _add_field("Email address or username" if _auth_mode == "login" else "Email address")
+	_email.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT if _auth_mode == "login" else LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS
 	_add_text("Password", 15, true)
 	_password = _add_field("At least 8 characters", true); _password.secret = true
 	_remember_check = null
@@ -218,20 +229,28 @@ func _set_auth_mode(mode: String) -> void:
 
 func _submit_auth() -> void:
 	if _busy: return
-	var email := _email.text.strip_edges() if _email != null else ""
+	var identifier := _email.text.strip_edges() if _email != null else ""
 	var password := _password.text if _password != null else ""
 	var username := _username.text.strip_edges() if _username != null else ""
-	if email == "" or password == "":
-		_status.text = "Enter your email and password."; return
+	if identifier == "" or password == "":
+		_status.text = "Enter your email or username and password."; return
 	var is_signup := _auth_mode == "signup"
 	if is_signup and not _valid_username(username):
 		_status.text = "Choose a username with 3–20 letters, numbers or underscores."; return
 	if is_signup and password.length() < 8:
 		_status.text = "Use a password with at least 8 characters."; return
 	_busy = true
-	var endpoint := "signUp" if is_signup else "signInWithPassword"
 	_status.text = "Creating your account…" if is_signup else "Signing in…"
-	var result := await _request_json(AUTH_URL + endpoint + "?key=" + FIREBASE_API_KEY, {"email": email, "password": password, "returnSecureToken": true})
+	var result: Dictionary
+	if is_signup or identifier.contains("@"):
+		var endpoint := "signUp" if is_signup else "signInWithPassword"
+		result = await _request_json(AUTH_URL + endpoint + "?key=" + FIREBASE_API_KEY, {"email": identifier, "password": password, "returnSecureToken": true})
+	else:
+		var username_result := await _request_json(BACKEND_URL + "/auth/username", {"username": identifier, "password": password})
+		if not username_result.ok:
+			_busy = false; _status.text = _auth_error(username_result.data); return
+		var exchange := await _request_json(AUTH_URL + "signInWithCustomToken?key=" + FIREBASE_API_KEY, {"token": str(username_result.data.get("customToken", "")), "returnSecureToken": true})
+		result = exchange
 	if not result.ok:
 		_busy = false; _status.text = _auth_error(result.data); return
 	_store_tokens(result.data, true if is_signup else (_remember_check != null and _remember_check.button_pressed))
@@ -257,20 +276,21 @@ func _auth_error(data: Dictionary) -> String:
 	var err: Variant = data.get("error", {})
 	var code := str(err.get("message", "")) if err is Dictionary else str(err)
 	match code:
-		"INVALID_LOGIN_CREDENTIALS", "EMAIL_NOT_FOUND", "INVALID_PASSWORD": return "That email and password don't match."
+		"INVALID_LOGIN_CREDENTIALS", "EMAIL_NOT_FOUND", "INVALID_PASSWORD": return "That email or username and password don't match."
 		"EMAIL_EXISTS": return "An account already uses that email. Log in instead."
 		"INVALID_EMAIL": return "Enter a valid email address."
 		"MISSING_PASSWORD": return "Enter your password."
 		"WEAK_PASSWORD", "WEAK_PASSWORD : Password should be at least 6 characters": return "Use a stronger password."
-		"TOO_MANY_ATTEMPTS_TRY_LATER": return "Too many attempts. Wait a little and try again."
+		"TOO_MANY_ATTEMPTS_TRY_LATER", "TOO_MANY_ATTEMPTS": return "Too many attempts. Wait a little and try again."
+		"USERNAME_LOGIN_UNAVAILABLE": return "Username sign in is temporarily unavailable. Try again later."
 		"OPERATION_NOT_ALLOWED": return "Email and password sign-in is not enabled for this project."
 		_: return "Couldn't sign in. Check your connection and try again."
 
 func _send_password_reset() -> void:
 	if _busy: return
 	var email := _email.text.strip_edges() if _email != null else ""
-	if email == "":
-		_status.text = "Enter your email address first."; return
+	if email == "" or not email.contains("@"):
+		_status.text = "Enter your email address to reset your password."; return
 	_busy = true; _status.text = "Sending password reset email…"
 	var result := await _request_json(AUTH_URL + "sendOobCode?key=" + FIREBASE_API_KEY, {"requestType": "PASSWORD_RESET", "email": email})
 	_busy = false
@@ -317,7 +337,7 @@ func _add_app_header() -> void:
 	var header := HBoxContainer.new(); header.add_theme_constant_override("separation", 10); _col.add_child(header)
 	var logo := TextureRect.new(); logo.texture = load("res://Assets/logo.png"); logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(38, 38); logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER; header.add_child(logo)
-	var heading := Label.new(); heading.text = "BlockTopia"; heading.add_theme_font_size_override("font_size", 27); heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(heading)
+	var heading := Label.new(); heading.text = "BlockTopia"; heading.add_theme_font_size_override("font_size", 22); heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL; header.add_child(heading)
 	if _profile.has("username"):
 		var chip := AvatarChip.new().setup(str(_profile.username), Color(str(_profile.get("avatarColor", "#f4f4f2"))), 34, Color(str(_character_data().bodyColor)))
 		header.add_child(chip)
@@ -333,7 +353,7 @@ func _add_update_banner() -> void:
 	var get_update := Button.new(); get_update.text = "Download"; get_update.custom_minimum_size = Vector2(100, 44); get_update.pressed.connect(_open_update_download); row.add_child(get_update)
 
 func _on_app_update_available(_version: String) -> void:
-	if _screen in ["dashboard", "details", "customization", "friends"]: _add_update_banner()
+	if _screen in ["dashboard", "details", "customization", "friends", "notifications", "settings"]: _add_update_banner()
 
 func _open_update_download() -> void:
 	if Settings.update_url != "": OS.shell_open(Settings.update_url)
@@ -355,17 +375,101 @@ func _show_friends() -> void:
 	_add_app_header()
 	_add_update_banner()
 	_add_tabs(false)
-	_add_text("Friends", 28)
-	_add_text("Add people to play and explore BlockTopia together.", 17, true)
+	_add_text("Friends", 26)
+	_add_text("Add people to play and explore BlockTopia together.", 15, true)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
 	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 10); card.add_child(body)
 	var note := Label.new(); note.text = "Find friends, accept requests, see who's playing, and join them from the website Friends tab."; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.modulate = Color(1, 1, 1, 0.68); body.add_child(note)
-	var open := Button.new(); open.text = "Open Friends"; open.custom_minimum_size = Vector2(0, 48); open.size_flags_horizontal = Control.SIZE_EXPAND_FILL; open.pressed.connect(_open_website_friends); body.add_child(open)
+	var open := Button.new(); open.text = "Open Friends"; open.custom_minimum_size = Vector2(0, 46); open.size_flags_horizontal = Control.SIZE_EXPAND_FILL; open.pressed.connect(_open_website_friends); body.add_child(open)
 	_fit()
 
-func _open_website_friends() -> void:
-	OS.shell_open(Settings.WEBSITE_URL + "#/friends")
+func _show_notifications() -> void:
+	_hide_auth_shell()
+	_screen = "notifications"; _clear()
+	_add_app_header()
+	_add_update_banner()
+	_add_tabs(false)
+	_add_text("Notifications", 26)
+	_add_text("Friend requests and account updates.", 15, true)
+	var actions := HBoxContainer.new(); actions.add_theme_constant_override("separation", 8); _col.add_child(actions)
+	var mark := Button.new(); mark.text = "Mark all as read"; mark.custom_minimum_size = Vector2(0, 42); mark.pressed.connect(_mark_notifications_read); actions.add_child(mark)
+	var list := VBoxContainer.new(); list.add_theme_constant_override("separation", 10); _col.add_child(list)
+	_add_notification_state(list, "Loading notifications…")
+	_fit()
+	var result := await _api("notifications", {})
+	if _screen != "notifications" or not is_instance_valid(list): return
+	for child in list.get_children(): child.queue_free()
+	if not result.ok:
+		_add_notification_state(list, result.error if result.error != "" else "Couldn't load notifications. Try again.")
+		return
+	var items: Array = result.data.get("items", [])
+	if items.is_empty():
+		_add_notification_state(list, "No notifications yet.")
+		return
+	for item_value in items:
+		if not item_value is Dictionary: continue
+		var item: Dictionary = item_value
+		var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 12)); list.add_child(card)
+		var inner := MarginContainer.new()
+		for side in ["left", "right", "top", "bottom"]: inner.add_theme_constant_override("margin_" + side, 12)
+		card.add_child(inner)
+		var text := Label.new(); text.text = str(item.get("text", item.get("type", "BlockTopia update"))); text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; inner.add_child(text)
+	_fit()
+
+func _add_notification_state(parent: Node, message: String) -> void:
+	var label := Label.new(); label.text = message; label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; label.modulate = Color(1, 1, 1, 0.68); parent.add_child(label)
+
+func _mark_notifications_read() -> void:
+	var result := await _api("notifications", {"action": "mark-read"})
+	if not result.ok:
+		if _screen == "notifications": _add_notification_state(_col, result.error if result.error != "" else "Couldn't update notifications.")
+		return
+	if _screen == "notifications": _show_notifications()
+
+func _show_settings() -> void:
+	_hide_auth_shell()
+	_screen = "settings"; _clear()
+	_add_app_header()
+	_add_update_banner()
+	_add_tabs(false)
+	_add_text("Settings", 26)
+	_add_text("Manage your BlockTopia account and app preferences.", 15, true)
+	var account := PanelContainer.new(); account.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	account.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(account)
+	var account_body := VBoxContainer.new(); account_body.add_theme_constant_override("separation", 8)
+	var account_margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: account_margin.add_theme_constant_override("margin_" + side, 14)
+	account.add_child(account_margin); account_margin.add_child(account_body)
+	var account_title := Label.new(); account_title.text = "Account"; account_title.add_theme_font_size_override("font_size", 19); account_body.add_child(account_title)
+	var account_name := Label.new(); account_name.text = "Signed in as %s" % str(_profile.get("username", "Player")); account_name.modulate = Color(1, 1, 1, 0.68); account_body.add_child(account_name)
+	var website_settings := Button.new(); website_settings.text = "Open account, security, privacy and language settings"; website_settings.custom_minimum_size = Vector2(0, 44); website_settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL; website_settings.pressed.connect(_open_website_settings); account_body.add_child(website_settings)
+	var game := PanelContainer.new(); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	game.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(game)
+	var game_body := VBoxContainer.new(); game_body.add_theme_constant_override("separation", 10)
+	var game_margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: game_margin.add_theme_constant_override("margin_" + side, 14)
+	game.add_child(game_margin); game_margin.add_child(game_body)
+	var game_title := Label.new(); game_title.text = "App preferences"; game_title.add_theme_font_size_override("font_size", 19); game_body.add_child(game_title)
+	var volume_label := Label.new(); volume_label.text = "Volume"; game_body.add_child(volume_label)
+	var volume := HSlider.new(); volume.min_value = 0; volume.max_value = 100; volume.step = 1; volume.value = Settings.volume * 100.0; volume.custom_minimum_size = Vector2(0, 28); game_body.add_child(volume)
+	volume.value_changed.connect(func(value: float): Settings.volume = value / 100.0; Settings.save_cfg())
+	var fps := CheckBox.new(); fps.text = "Show FPS"; fps.button_pressed = Settings.show_fps; game_body.add_child(fps)
+	fps.toggled.connect(func(value: bool): Settings.show_fps = value; Settings.save_cfg())
+	var names := CheckBox.new(); names.text = "Show player names"; names.button_pressed = Settings.show_names; game_body.add_child(names)
+	names.toggled.connect(func(value: bool): Settings.show_names = value; Settings.save_cfg())
+	if not Settings.is_mobile():
+		var fullscreen := CheckBox.new(); fullscreen.text = "Fullscreen"; fullscreen.button_pressed = Settings.fullscreen; game_body.add_child(fullscreen)
+		fullscreen.toggled.connect(func(value: bool): Settings.fullscreen = value; Settings.save_cfg(); Settings.apply_window())
+	var links := HBoxContainer.new(); links.add_theme_constant_override("separation", 8); _col.add_child(links)
+	var friends := Button.new(); friends.text = "Friends"; friends.size_flags_horizontal = Control.SIZE_EXPAND_FILL; friends.pressed.connect(_show_friends); links.add_child(friends)
+	var notices := Button.new(); notices.text = "Notifications"; notices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; notices.pressed.connect(_show_notifications); links.add_child(notices)
+	_fit()
+
+func _open_website_settings() -> void:
+	OS.shell_open(Settings.WEBSITE_URL + "#/settings/account")
+
 
 func _show_dashboard() -> void:
 	_hide_auth_shell()
@@ -373,20 +477,22 @@ func _show_dashboard() -> void:
 	_add_app_header()
 	_add_update_banner()
 	_add_tabs(false)
-	_add_text("Welcome, %s" % str(_profile.get("username", "player")), 23)
+	_add_text("Welcome, %s" % str(_profile.get("username", "player")), 20)
 	_add_friends_invite()
-	_add_text("Discover", 28)
+	_add_text("Featured", 23)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
-	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 10); card.add_child(body)
-	var art := TextureRect.new(); art.texture = load("res://Assets/baseplate.png"); art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; art.custom_minimum_size = Vector2(0, 190); art.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_child(art)
+	var wide := get_viewport().get_visible_rect().size.x >= 720.0
+	var body: BoxContainer = HBoxContainer.new() if wide else VBoxContainer.new(); body.add_theme_constant_override("separation", 0); card.add_child(body)
+	var art := TextureRect.new(); art.texture = load("res://Assets/baseplate.png"); art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.custom_minimum_size = Vector2(380, 270) if wide else Vector2(0, 190); art.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_child(art)
 	var inset := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]: inset.add_theme_constant_override("margin_" + side, 14)
-	body.add_child(inset)
-	var info := VBoxContainer.new(); info.add_theme_constant_override("separation", 7); inset.add_child(info)
+	for side in ["left", "right", "top", "bottom"]: inset.add_theme_constant_override("margin_" + side, 18)
+	inset.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_child(inset)
+	var info := VBoxContainer.new(); info.add_theme_constant_override("separation", 8); inset.add_child(info)
 	var name := Label.new(); name.text = "BASEPLATE"; name.add_theme_font_size_override("font_size", 25); info.add_child(name)
 	var by := Label.new(); by.text = "By BlockTopia"; by.modulate = Color(1, 1, 1, 0.62); info.add_child(by)
 	var desc := Label.new(); desc.text = "Explore a sunny world, meet other players, chat and play together."; desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(desc)
-	var open := Button.new(); open.text = "View game"; open.custom_minimum_size = Vector2(0, 50); open.pressed.connect(_show_details); info.add_child(open)
+	var open := Button.new(); open.text = "View game"; open.custom_minimum_size = Vector2(0, 48); open.pressed.connect(_show_details); info.add_child(open)
 	var custom_card := PanelContainer.new(); custom_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	custom_card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(custom_card)
 	var custom_row := HBoxContainer.new(); custom_row.add_theme_constant_override("separation", 12); custom_card.add_child(custom_row)
