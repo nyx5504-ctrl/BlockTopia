@@ -117,8 +117,6 @@ export function renderAccount() {
   $("#setEmail").textContent = u.email || "";
   $("#setVerified").textContent = t(u.emailVerified ? "verified" : "unverified");
   $("#resend2").hidden = u.emailVerified;
-  const cur = safeColor(p.avatarColor);
-  $("#swatches").innerHTML = AVATAR_COLORS.map(c => `<button class="sw" type="button" role="radio" style="--c:${c}" data-color="${c}" aria-checked="${c === cur}" aria-label="${c}">${icon("check")}</button>`).join("");
   $("#selReq").value = p.allowRequests === "none" ? "none" : "everyone";
   $("#selJoin").value = p.allowJoin === "nobody" ? "nobody" : "friends";
   applyTheme(document.documentElement.dataset.theme);
@@ -204,11 +202,6 @@ export function initSettings() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") closePalette(); });
   $("#characterEditor").addEventListener("change", persistCharacter);
   $("#saveCharacter").addEventListener("click", persistCharacter);
-  // Outfit color
-  $("#swatches").addEventListener("click", async e => {
-    const b = e.target.closest("[data-color]"); if (!b) return;
-    if (await save({ avatarColor: b.dataset.color })) { renderAccount(); document.dispatchEvent(new Event("profilechange")); toast(t("saved")); }
-  });
   // privacy
   $("#selReq").onchange = async e => { if (await save({ allowRequests: e.target.value })) toast(t("saved")); };
   $("#selJoin").onchange = async e => { if (await save({ allowJoin: e.target.value })) toast(t("saved")); };
