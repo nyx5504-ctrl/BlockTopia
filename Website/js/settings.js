@@ -5,16 +5,13 @@ import { $, $$, esc, icon, avatar, AVATAR_COLORS, safeColor, toast, busy } from 
 import { t, fmtDate, fmtRel, countryName } from "./i18n.js";
 import { watchDevices, revokeDevice, removeDevice } from "./devices.js";
 import { errKey } from "./auth.js";
+import { PALETTE, PART_DEFAULTS } from "./palette.js";
+import { CONFIG } from "./config.js";
 
-const SECTIONS = ["account", "customization", "security", "privacy", "language"];
+const SECTIONS = ["account", "security", "privacy", "language"];
 let stopDevices = null, devices = [];
 
 const save = patch => F.updateDoc(F.doc(db, "users", S.user.uid), patch).then(() => { Object.assign(S.profile, patch); return true; }).catch(() => { toast(t("err_generic"), "bad"); return false; });
-const PART_DEFAULTS = {
-  head: { size: 1, color: "#f2c744" }, torso: { size: 1, color: "#2f6fd6" },
-  leftArm: { size: 1, color: "#f2c744" }, rightArm: { size: 1, color: "#f2c744" },
-  leftLeg: { size: 1, color: "#3f9a52" }, rightLeg: { size: 1, color: "#3f9a52" }
-};
 const validHex = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
 const clamp = (value, min, max, fallback) => Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : fallback;
 const characterOf = p => {
@@ -63,6 +60,20 @@ function paintCharacterPreview() {
   if (rig) { rig.set(c); return; }
   $("#characterPreview").innerHTML = svg;
 }
+function syncSwatches() {
+  $$("[data-swatch-for]").forEach(b => { const v = $('[data-part-color="' + b.dataset.swatchFor + '"]').value; b.style.setProperty("--c", v); });
+}
+let popFor = null;
+function closePalette() { const pop = $("#palettePop"); if (pop) pop.hidden = true; popFor = null; }
+function openPalette(btn) {
+  const pop = $("#palettePop"), part = btn.dataset.swatchFor, cur = $('[data-part-color="' + part + '"]').value.toLowerCase();
+  if (popFor === part && !pop.hidden) return closePalette();
+  popFor = part;
+  pop.innerHTML = PALETTE.map(c => '<button type="button" class="sw" role="option" style="--c:' + c + '" data-pick="' + c + '" aria-selected="' + (c === cur) + '" aria-label="' + c + '">' + icon("check") + '</button>').join("");
+  const hb = $("#v-customize").getBoundingClientRect(), bb = btn.getBoundingClientRect();
+  pop.hidden = false;
+  const w = pop.offsetWidth; pop.style.top = (bb.bottom - hb.top + 8) + "px"; pop.style.left = Math.max(8, Math.min(bb.right - hb.left - w, hb.width - w - 8)) + "px";
+}
 function renderCustomization() {
   const c = characterOf(S.profile || {});
   $("#characterHeight").value = String(c.height);
@@ -71,8 +82,10 @@ function renderCustomization() {
     $('[data-part-size="' + name + '"]').value = String(c.parts[name].size);
     $('[data-part-color="' + name + '"]').value = c.parts[name].color;
   }
+  syncSwatches();
   paintCharacterPreview();
 }
+export function renderCustomize() { renderCustomization(); loadRig(); }
 
 export function applyTheme(theme) {
   const th = theme === "light" ? "light" : "dark";
@@ -86,7 +99,6 @@ export function showSection(id) {
   if (!SECTIONS.includes(id)) id = "account";
   $$("[data-sec]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.sec === id)));
   $$("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== id; });
-  if (id === "customization") loadRig();
   if (id === "security") startDevices(); else { stopDevices?.(); stopDevices = null; }
   if (location.hash !== "#/settings/" + id) history.replaceState(null, "", "#/settings/" + id);
 }
@@ -100,7 +112,6 @@ export function renderAccount() {
   const p = S.profile || {}, u = auth.currentUser; if (!u) return;
   const character = characterOf(p);
   $("#setAv").outerHTML = avatar(p.username, p.avatarColor, "lg", character).replace("<span", '<span id="setAv"');
-  renderCustomization();
   $("#setName").textContent = p.username || "";
   $("#setUser").textContent = p.username || "";
   $("#setEmail").textContent = u.email || "";
@@ -127,6 +138,14 @@ export function renderSecurity() {
       : `<button class="btn sm" data-dev-out="${esc(d.id)}" type="button">${esc(t("sign_out_dev"))}</button>`;
     return `<div class="row dev"><span class="ic-box">${icon(icn)}</span><div class="grow"><div class="name">${esc(d.name || "?")}</div><div class="sub">${esc(where)}</div><div class="sub">${esc(t("first_seen", { date: fmtDate(d.firstMs) }))}</div></div><div class="btns">${act}</div></div>`;
   }).join("") : `<p class="empty">…</p>`;
+}
+
+// If you're already in a game, the server updates your character for everyone (including you) the moment this arrives. Best effort: the Firestore save above is what makes it permanent.
+async function pushToGame(character) {
+  try {
+    const token = await auth.currentUser.getIdToken();
+    await fetch((CONFIG.BACKEND_URL || "").replace(/\/+$/, "") + "/profile", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ character }) });
+  } catch {}
 }
 
 export function initSettings() {
@@ -159,7 +178,8 @@ export function initSettings() {
     const button = $("#saveCharacter"), status = $("#characterStatus"), character = readCharacterControls();
     busy(button, true, "Saving…"); status.textContent = "Saving customization…";
     if (await save({ character })) {
-      renderAccount(); document.dispatchEvent(new Event("profilechange")); status.textContent = "Customization saved."; toast(t("saved"));
+      renderAccount(); document.dispatchEvent(new Event("profilechange")); status.textContent = "Saved. Changes show up in game right away."; toast(t("saved"));
+      pushToGame(character);
     } else status.textContent = "Couldn't save customization. Try again.";
     busy(button, false);
   };
@@ -170,10 +190,18 @@ export function initSettings() {
       $('[data-part-size="' + name + '"]').value = "1";
       $('[data-part-color="' + name + '"]').value = defaults.color;
     }
-    paintCharacterPreview();
+    syncSwatches(); paintCharacterPreview();
     persistCharacter();
   });
   $("#characterEditor").addEventListener("input", paintCharacterPreview);
+  $("#characterEditor").addEventListener("click", e => { const b = e.target.closest("[data-swatch-for]"); if (b) openPalette(b); });
+  $("#palettePop").addEventListener("click", e => {
+    const b = e.target.closest("[data-pick]"); if (!b || !popFor) return;
+    $('[data-part-color="' + popFor + '"]').value = b.dataset.pick; closePalette(); syncSwatches();
+    $("#characterEditor").dispatchEvent(new Event("input")); $("#characterEditor").dispatchEvent(new Event("change"));
+  });
+  document.addEventListener("click", e => { if (!e.target.closest("#palettePop, [data-swatch-for]")) closePalette(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closePalette(); });
   $("#characterEditor").addEventListener("change", persistCharacter);
   $("#saveCharacter").addEventListener("click", persistCharacter);
   // Outfit color

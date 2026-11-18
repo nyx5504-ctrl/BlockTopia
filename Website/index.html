@@ -111,6 +111,7 @@
       <a class="nav" data-route="home" href="#/home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span data-i18n="nav_home">Home</span></a>
       <a class="nav" data-route="friends" href="#/friends"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span data-i18n="nav_friends">Friends</span><i class="badge" data-req-badge hidden></i></a>
       <a class="nav" data-route="alerts" href="#/alerts"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span data-i18n="nav_alerts">Notifications</span><i class="badge" data-alert-badge hidden></i></a>
+      <a class="nav" data-route="customize" href="#/customize"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="nav_customize">Customize</span></a>
       <a class="nav" data-route="settings" href="#/settings"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg><span data-i18n="nav_settings">Settings</span></a>
     </nav>
     <div class="grow"></div>
@@ -132,6 +133,7 @@
       <!-- HOME -->
       <section class="view" id="v-home">
         <div class="notice" id="verifyBar" hidden><span data-i18n="verify_msg">Verify your email to secure your account.</span><button class="link" id="resend" type="button" data-i18n="resend">Resend email</button></div>
+        <a class="card home-custom" href="#/customize"><span class="av lg" id="homeAv">?</span><span class="grow"><b data-i18n="cust_title">Make your character yours</b><span class="sub" data-i18n="cust_sub">Change colors, height and body type.</span></span><span class="btn sm" data-i18n="nav_customize">Customize</span></a>
         <div id="homeFriends" aria-live="polite"></div>
         <div id="homeFeatured"><h2 data-i18n="featured">Featured</h2><div id="featured"></div></div>
         <div id="recentWrap" hidden><h2 data-i18n="recent">Recently played</h2><div id="recent" class="grid"></div></div>
@@ -157,13 +159,41 @@
         <div id="alertList" class="card list"></div>
       </section>
 
+      <!-- CUSTOMIZE -->
+      <section class="view" id="v-customize" hidden>
+        <h1 class="page" data-i18n="nav_customize">Customize</h1>
+        <div class="card character-card">
+                <div class="srow"><div class="lbl">Customize your character</div><div class="sub">Changes sync to the BlockTopia app and show up in game right away, for you and everyone else.</div></div>
+                <div class="character-editor" id="characterEditor">
+                  <div class="character-preview" id="characterPreview" role="img" aria-label="Character preview"></div>
+                  <div class="character-fields">
+                    <label class="character-field"><span>Height <b id="characterHeightValue">100%</b></span><input id="characterHeight" type="range" min="0.75" max="1.25" step="0.05"></label>
+                    <label class="character-field"><span>Body type</span><select class="input" id="characterBodyType"><option value="classic">Classic</option><option value="slim">Slim</option><option value="broad">Broad</option></select></label>
+                  </div>
+                  <div class="part-grid">
+                    <div class="part-field"><span>Head <b data-size-value="head">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="head"><span class="swatch-field"><input type="hidden" data-part-color="head"><button type="button" class="swb" data-swatch-for="head" aria-label="Head color" aria-haspopup="true"></button></span></div></div>
+                    <div class="part-field"><span>Torso <b data-size-value="torso">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="torso"><span class="swatch-field"><input type="hidden" data-part-color="torso"><button type="button" class="swb" data-swatch-for="torso" aria-label="Torso color" aria-haspopup="true"></button></span></div></div>
+                    <div class="part-field"><span>Left arm <b data-size-value="leftArm">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="leftArm"><span class="swatch-field"><input type="hidden" data-part-color="leftArm"><button type="button" class="swb" data-swatch-for="leftArm" aria-label="Left arm color" aria-haspopup="true"></button></span></div></div>
+                    <div class="part-field"><span>Right arm <b data-size-value="rightArm">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="rightArm"><span class="swatch-field"><input type="hidden" data-part-color="rightArm"><button type="button" class="swb" data-swatch-for="rightArm" aria-label="Right arm color" aria-haspopup="true"></button></span></div></div>
+                    <div class="part-field"><span>Left leg <b data-size-value="leftLeg">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="leftLeg"><span class="swatch-field"><input type="hidden" data-part-color="leftLeg"><button type="button" class="swb" data-swatch-for="leftLeg" aria-label="Left leg color" aria-haspopup="true"></button></span></div></div>
+                    <div class="part-field"><span>Right leg <b data-size-value="rightLeg">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="rightLeg"><span class="swatch-field"><input type="hidden" data-part-color="rightLeg"><button type="button" class="swb" data-swatch-for="rightLeg" aria-label="Right leg color" aria-haspopup="true"></button></span></div></div>
+                  </div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="btn ghost" id="resetCharacter" type="button">Reset to defaults</button>
+                    <button class="btn primary" id="saveCharacter" type="button">Save customization</button>
+                  </div>
+                  <p class="sub" id="characterStatus" aria-live="polite"></p>
+                </div>
+              </div>
+        <div class="palette-pop" id="palettePop" role="listbox" aria-label="Colors" hidden></div>
+      </section>
+
       <!-- SETTINGS -->
       <section class="view" id="v-settings" hidden>
         <h1 class="page" data-i18n="nav_settings">Settings</h1>
         <div class="settings">
           <div class="snav" role="tablist">
             <button type="button" role="tab" data-sec="account"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="sec_account">Account</span></button>
-            <button type="button" role="tab" data-sec="customization"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span>Customization</span></button>
             <button type="button" role="tab" data-sec="security"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span data-i18n="sec_security">Security</span></button>
             <button type="button" role="tab" data-sec="privacy"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="sec_privacy">Privacy</span></button>
             <button type="button" role="tab" data-sec="language"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="sec_language">Language</span></button>
@@ -193,33 +223,6 @@
                 </div>
               </div>
               <button class="btn danger block" data-logout type="button" style="max-width:320px"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg><span data-i18n="logout">Log out</span></button>
-            </div>
-
-            <!-- Customization -->
-            <div class="panel" data-panel="customization" hidden>
-              <div class="card character-card">
-                <div class="srow"><div class="lbl">Customize your character</div><div class="sub">Changes sync to your BlockTopia app and games.</div></div>
-                <div class="character-editor" id="characterEditor">
-                  <div class="character-preview" id="characterPreview" role="img" aria-label="Character preview"></div>
-                  <div class="character-fields">
-                    <label class="character-field"><span>Height <b id="characterHeightValue">100%</b></span><input id="characterHeight" type="range" min="0.75" max="1.25" step="0.05"></label>
-                    <label class="character-field"><span>Body type</span><select class="input" id="characterBodyType"><option value="classic">Classic</option><option value="slim">Slim</option><option value="broad">Broad</option></select></label>
-                  </div>
-                  <div class="part-grid">
-                    <label class="part-field"><span>Head <b data-size-value="head">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="head"><input aria-label="Head color" type="color" data-part-color="head"></div></label>
-                    <label class="part-field"><span>Torso <b data-size-value="torso">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="torso"><input aria-label="Torso color" type="color" data-part-color="torso"></div></label>
-                    <label class="part-field"><span>Left arm <b data-size-value="leftArm">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="leftArm"><input aria-label="Left arm color" type="color" data-part-color="leftArm"></div></label>
-                    <label class="part-field"><span>Right arm <b data-size-value="rightArm">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="rightArm"><input aria-label="Right arm color" type="color" data-part-color="rightArm"></div></label>
-                    <label class="part-field"><span>Left leg <b data-size-value="leftLeg">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="leftLeg"><input aria-label="Left leg color" type="color" data-part-color="leftLeg"></div></label>
-                    <label class="part-field"><span>Right leg <b data-size-value="rightLeg">100%</b></span><div><input type="range" min="0.7" max="1.3" step="0.05" data-part-size="rightLeg"><input aria-label="Right leg color" type="color" data-part-color="rightLeg"></div></label>
-                  </div>
-                  <div style="display:flex;gap:10px;flex-wrap:wrap">
-                    <button class="btn ghost" id="resetCharacter" type="button">Reset to defaults</button>
-                    <button class="btn primary" id="saveCharacter" type="button">Save customization</button>
-                  </div>
-                  <p class="sub" id="characterStatus" aria-live="polite"></p>
-                </div>
-              </div>
             </div>
 
             <!-- Security -->
@@ -256,6 +259,7 @@
     <a data-route="home" href="#/home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span data-i18n="nav_home">Home</span></a>
     <a data-route="friends" href="#/friends"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg><span data-i18n="nav_friends">Friends</span><i class="badge" data-req-badge hidden></i></a>
     <a data-route="alerts" href="#/alerts"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span data-i18n="nav_alerts">Notifications</span><i class="badge" data-alert-badge hidden></i></a>
+    <a data-route="customize" href="#/customize"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="nav_customize">Customize</span></a>
     <a data-route="settings" href="#/settings"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg><span data-i18n="nav_settings">Settings</span></a>
   </nav>
 </div>

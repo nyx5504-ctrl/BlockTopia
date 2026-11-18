@@ -9,10 +9,10 @@ import { initPlay, warmServer, showDownloads } from "./play.js";
 import { initHome, renderHome, loadStats } from "./games.js";
 import { initFriends, startFriends, renderFriends, stopListeners } from "./friends.js";
 import { initAlerts, startAlerts, renderAlerts, renderBadges } from "./alerts.js";
-import { initSettings, showSection, renderAccount, renderSecurity, applyTheme, stopSettings } from "./settings.js";
+import { initSettings, renderCustomize, showSection, renderAccount, renderSecurity, applyTheme, stopSettings } from "./settings.js";
 import { registerDevice, startHeartbeat, stopHeartbeat, watchSelf } from "./devices.js";
 
-const ROUTES = ["home", "friends", "alerts", "settings"];
+const ROUTES = ["home", "friends", "alerts", "customize", "settings"];
 
 function route() {
   if (!S.user) return;
@@ -24,6 +24,7 @@ function route() {
   if (r === "home") renderHome();
   if (r === "friends") renderFriends();
   if (r === "alerts") renderAlerts();
+  if (r === "customize") { renderCustomize(); }
   if (r === "settings") { renderAccount(); showSection(parts[1]); }
   document.title = `${t("nav_" + r)} · BlockTopia`;
   window.scrollTo(0, 0);
@@ -33,6 +34,7 @@ function paintUser() {
   const p = S.profile || {};
   $("#meAv").outerHTML = avatar(p.username, p.avatarColor, "sm", p.character).replace("<span", '<span id="meAv"');
   $("#meName").textContent = p.username || "";
+  const ha = $("#homeAv"); if (ha) ha.outerHTML = avatar(p.username, p.avatarColor, "lg", p.character).replace("<span", '<span id="homeAv"');
   const u = auth.currentUser;
   $("#verifyBar").hidden = !u || u.emailVerified;
 }
