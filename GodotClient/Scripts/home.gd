@@ -384,6 +384,9 @@ func _show_friends() -> void:
 	var open := Button.new(); open.text = "Open Friends"; open.custom_minimum_size = Vector2(0, 46); open.size_flags_horizontal = Control.SIZE_EXPAND_FILL; open.pressed.connect(_open_website_friends); body.add_child(open)
 	_fit()
 
+func _open_website_friends() -> void:
+	OS.shell_open(Settings.WEBSITE_URL + "#/friends")
+
 func _show_notifications() -> void:
 	_hide_auth_shell()
 	_screen = "notifications"; _clear()
