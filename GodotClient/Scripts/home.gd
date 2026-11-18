@@ -14,6 +14,8 @@ var _side: PanelContainer
 var _side_user: Label
 var _side_chip: AvatarChip
 var _side_buttons := {}
+var _bg: ColorRect
+var _prefs_synced := false
 var _content_tabs: Control
 var _top_logout: Button
 var _auth_shell: PanelContainer
@@ -49,7 +51,8 @@ var _device_registered := false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new(); bg.color = Color(0.043, 0.043, 0.047); bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
+	ThemeBuilder.apply_to(get_tree(), true)
+	_bg = ColorRect.new(); _bg.color = ThemeBuilder.c(Color(0.043, 0.043, 0.047)); _bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_bg)
 	_scroll = ScrollContainer.new(); _scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; add_child(_scroll)
 	_center = CenterContainer.new(); _center.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _scroll.add_child(_center)
 	_col = VBoxContainer.new(); _col.add_theme_constant_override("separation", 14); _col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _center.add_child(_col)
@@ -95,7 +98,7 @@ func _fit() -> void:
 
 func _build_sidebar() -> void:
 	_side = PanelContainer.new(); _side.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE); _side.offset_right = 236.0
-	_side.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.075, 0.075, 0.085), Color(0.18, 0.18, 0.2), 0))
+	_side.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.075, 0.075, 0.085)), ThemeBuilder.c(Color(0.18, 0.18, 0.2)), 0))
 	add_child(_side)
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 16)
@@ -107,10 +110,10 @@ func _build_sidebar() -> void:
 	var group := ButtonGroup.new()
 	for item in ["Home", "Friends", "Notifications", "Settings", "Customization"]:
 		var button := Button.new(); button.text = item; button.alignment = HORIZONTAL_ALIGNMENT_LEFT; button.custom_minimum_size = Vector2(0, 46); button.toggle_mode = true; button.button_group = group
-		button.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.075, 0.075, 0.085), Color(0.075, 0.075, 0.085), 10))
-		button.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.13, 0.13, 0.15), Color(0.13, 0.13, 0.15), 10))
-		button.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10))
-		button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+		button.add_theme_stylebox_override("normal", ThemeBuilder.box(ThemeBuilder.c(Color(0.075, 0.075, 0.085)), ThemeBuilder.c(Color(0.075, 0.075, 0.085)), 10))
+		button.add_theme_stylebox_override("hover", ThemeBuilder.box(ThemeBuilder.c(Color(0.13, 0.13, 0.15)), ThemeBuilder.c(Color(0.13, 0.13, 0.15)), 10))
+		button.add_theme_stylebox_override("pressed", ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10))
+		button.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
 		if item == "Home": button.pressed.connect(_show_dashboard)
 		elif item == "Friends": button.pressed.connect(_show_friends)
 		elif item == "Notifications": button.pressed.connect(_show_notifications)
@@ -166,9 +169,9 @@ func _add_button(label: String, callback: Callable, primary := false) -> Button:
 	var b := Button.new(); b.text = label; b.custom_minimum_size = Vector2(0, 46); b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.add_theme_font_size_override("font_size", 16)
 	if primary:
-		var style := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.98, 0.98, 0.99), 10)
+		var style := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.98, 0.98, 0.99)), 10)
 		b.add_theme_stylebox_override("normal", style); b.add_theme_stylebox_override("hover", style); b.add_theme_stylebox_override("pressed", style)
-		b.add_theme_color_override("font_color", Color(0.05, 0.05, 0.06)); b.add_theme_color_override("font_hover_color", Color(0.05, 0.05, 0.06))
+		b.add_theme_color_override("font_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06))); b.add_theme_color_override("font_hover_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
 	b.pressed.connect(callback); _col.add_child(b); return b
 
 func _add_tabs(detail := false) -> void:
@@ -177,11 +180,11 @@ func _add_tabs(detail := false) -> void:
 	scroll.visible = get_viewport().get_visible_rect().size.x < 900.0; _col.add_child(scroll); _content_tabs = scroll
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); scroll.add_child(row)
 	var group := ButtonGroup.new()
-	var tab_style := ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10)
-	var tab_on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10)
+	var tab_style := ThemeBuilder.box(ThemeBuilder.c(Color(0.12, 0.12, 0.14)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10)
+	var tab_on := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10)
 	for item in ["Home", "Friends", "Notifications", "Settings", "Customization"]:
 		var button := Button.new(); button.text = item; button.toggle_mode = true; button.button_group = group; button.custom_minimum_size = Vector2(112, 44)
-		button.add_theme_stylebox_override("normal", tab_style); button.add_theme_stylebox_override("hover", tab_style); button.add_theme_stylebox_override("pressed", tab_on); button.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+		button.add_theme_stylebox_override("normal", tab_style); button.add_theme_stylebox_override("hover", tab_style); button.add_theme_stylebox_override("pressed", tab_on); button.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
 		button.button_pressed = (item == "Home" and _screen in ["dashboard", "details"]) or (item == "Friends" and _screen == "friends") or (item == "Notifications" and _screen == "notifications") or (item == "Settings" and _screen == "settings") or (item == "Customization" and _screen == "customization")
 		if item == "Home": button.pressed.connect(_show_dashboard)
 		elif item == "Friends": button.pressed.connect(_show_friends)
@@ -206,10 +209,10 @@ func _show_auth(message := "") -> void:
 	for mode in ["login", "signup"]:
 		var b := Button.new(); b.text = "Log in" if mode == "login" else "Sign up"; b.custom_minimum_size = Vector2(0, 46)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.toggle_mode = true; b.button_group = mode_group; b.button_pressed = _auth_mode == mode
-		b.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10))
-		b.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.16, 0.16, 0.18), Color(0.24, 0.24, 0.27), 10))
-		b.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10))
-		b.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06))
+		b.add_theme_stylebox_override("normal", ThemeBuilder.box(ThemeBuilder.c(Color(0.12, 0.12, 0.14)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10))
+		b.add_theme_stylebox_override("hover", ThemeBuilder.box(ThemeBuilder.c(Color(0.16, 0.16, 0.18)), ThemeBuilder.c(Color(0.24, 0.24, 0.27)), 10))
+		b.add_theme_stylebox_override("pressed", ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10))
+		b.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
 		b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
 	if _auth_mode == "signup":
 		_add_text("Username", 15, true)
@@ -326,7 +329,7 @@ func _show_auth_shell() -> void:
 	if _auth_shell != null and is_instance_valid(_auth_shell): return
 	if _col.get_parent() == _center: _center.remove_child(_col)
 	_auth_shell = PanelContainer.new()
-	_auth_shell.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.09, 0.09, 0.105), Color(0.22, 0.22, 0.25), 16))
+	_auth_shell.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.09, 0.09, 0.105)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 16))
 	_center.add_child(_auth_shell)
 	_auth_shell_margin = MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: _auth_shell_margin.add_theme_constant_override("margin_" + side, 22)
@@ -346,13 +349,13 @@ func _add_app_header() -> void:
 	if _profile.has("username"):
 		var chip := AvatarChip.new().setup(str(_profile.username), Color(str(_profile.get("avatarColor", "#f4f4f2"))), 34, Color(str(_character_data().bodyColor)))
 		header.add_child(chip)
-		var user := Label.new(); user.text = str(_profile.username); user.clip_text = true; user.custom_minimum_size = Vector2(45, 0); user.add_theme_color_override("font_color", Color(1, 1, 1, 0.75)); header.add_child(user)
+		var user := Label.new(); user.text = str(_profile.username); user.clip_text = true; user.custom_minimum_size = Vector2(45, 0); user.add_theme_color_override("font_color", ThemeBuilder.c(Color(1, 1, 1, 0.75))); header.add_child(user)
 	_top_logout = Button.new(); _top_logout.text = "Sign out"; _top_logout.custom_minimum_size = Vector2(100, 44); _top_logout.pressed.connect(_sign_out); header.add_child(_top_logout)
 
 func _add_update_banner() -> void:
 	if not Settings.update_available or (_update_notice != null and is_instance_valid(_update_notice)): return
 	_update_notice = PanelContainer.new(); _update_notice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.11, 0.16, 0.25), Color(0.24, 0.42, 0.7), 12)); _col.add_child(_update_notice)
+	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.11, 0.16, 0.25)), ThemeBuilder.c(Color(0.24, 0.42, 0.7)), 12)); _col.add_child(_update_notice)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); _update_notice.add_child(row)
 	var note := Label.new(); note.text = "Update %s is available. Download and install it, then reopen BlockTopia." % Settings.update_version; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(note)
 	var get_update := Button.new(); get_update.text = "Download"; get_update.custom_minimum_size = Vector2(100, 44); get_update.pressed.connect(_open_update_download); row.add_child(get_update)
@@ -366,7 +369,7 @@ func _open_update_download() -> void:
 func _add_friends_invite() -> void:
 	_add_text("Friends", 23)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
+	card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); _col.add_child(card)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 12); card.add_child(row)
 	var plus := Label.new(); plus.text = "+"; plus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; plus.custom_minimum_size = Vector2(52, 52); plus.add_theme_font_size_override("font_size", 34); plus.add_theme_color_override("font_color", Color("#f2c744")); row.add_child(plus)
 	var details := VBoxContainer.new(); details.size_flags_horizontal = Control.SIZE_EXPAND_FILL; details.add_theme_constant_override("separation", 4); row.add_child(details)
@@ -383,7 +386,7 @@ func _show_friends() -> void:
 	_add_text("Friends", 26)
 	_add_text("Add people to play and explore BlockTopia together.", 15, true)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
+	card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); _col.add_child(card)
 	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 10); card.add_child(body)
 	var note := Label.new(); note.text = "Find friends, accept requests, see who's playing, and join them from the website Friends tab."; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.modulate = Color(1, 1, 1, 0.68); body.add_child(note)
 	var open := Button.new(); open.text = "Open Friends"; open.custom_minimum_size = Vector2(0, 46); open.size_flags_horizontal = Control.SIZE_EXPAND_FILL; open.pressed.connect(_open_website_friends); body.add_child(open)
@@ -419,7 +422,7 @@ func _show_notifications() -> void:
 		if not item_value is Dictionary: continue
 		var item: Dictionary = item_value
 		var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 12)); list.add_child(card)
+		card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 12)); list.add_child(card)
 		var inner := MarginContainer.new()
 		for side in ["left", "right", "top", "bottom"]: inner.add_theme_constant_override("margin_" + side, 12)
 		card.add_child(inner)
@@ -469,19 +472,19 @@ func _show_settings(section := "") -> void:
 func _add_settings_tabs() -> void:
 	var flow := HFlowContainer.new(); flow.add_theme_constant_override("h_separation", 8); flow.add_theme_constant_override("v_separation", 8); flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _col.add_child(flow)
 	var group := ButtonGroup.new()
-	var off := ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10)
-	var on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10)
+	var off := ThemeBuilder.box(ThemeBuilder.c(Color(0.12, 0.12, 0.14)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10)
+	var on := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10)
 	for item in [["account", "Account"], ["security", "Security"], ["privacy", "Privacy"], ["language", "Language"]]:
 		var b := Button.new(); b.text = str(item[1]); b.toggle_mode = true; b.button_group = group; b.custom_minimum_size = Vector2(110, 42)
 		b.add_theme_stylebox_override("normal", off); b.add_theme_stylebox_override("hover", off); b.add_theme_stylebox_override("pressed", on); b.add_theme_stylebox_override("hover_pressed", on)
-		b.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06)); b.add_theme_color_override("font_hover_pressed_color", Color(0.05, 0.05, 0.06))
+		b.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06))); b.add_theme_color_override("font_hover_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
 		b.button_pressed = str(item[0]) == _settings_section
 		b.pressed.connect(_show_settings.bind(str(item[0])))
 		flow.add_child(b)
 
 func _settings_card(parent: Node, title := "") -> VBoxContainer:
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); parent.add_child(card)
+	card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); parent.add_child(card)
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 14)
 	card.add_child(margin)
@@ -544,7 +547,7 @@ func _build_account(body: Node) -> void:
 	open.pressed.connect(func(): form.visible = not form.visible)
 	save.pressed.connect(_change_password.bind(current, fresh, confirm, status, save, form))
 	var out := _settings_button(body, "Log out", _sign_out)
-	out.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
+	out.add_theme_color_override("font_color", ThemeBuilder.c(Color(1.0, 0.55, 0.55)))
 
 func _resend_verification(button: Button, status: Label) -> void:
 	button.disabled = true; status.text = "Sending…"
@@ -638,12 +641,59 @@ func _save_setting_choice(index: int, items: Array, field: String, status: Label
 	var result := await _fs_patch("users/" + _uid(), {field: str(items[index][0])})
 	if is_instance_valid(status): status.text = "Saved." if result.ok else "Couldn't save. Try again."
 
-# ---- Language ----
+# ---- Language + Background (same choices as the website; saved to your account so both stay in sync) ----
 func _build_language(body: Node) -> void:
 	var card := _settings_card(body, "Language")
-	_settings_row(card, "App language", "English")
-	_settings_note(card, "The app is in English for now. Your website language is changed on the website.")
-	_settings_button(card, "Open website language settings", func(): OS.shell_open(Settings.WEBSITE_URL + "#/settings/language"))
+	var status := _settings_note(card, "")
+	var pick := OptionButton.new(); pick.custom_minimum_size = Vector2(0, 46); pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_child(pick)
+	for i in Lang.CODES.size():
+		pick.add_item(str(Lang.NAMES[Lang.CODES[i]]), i)
+		if Lang.CODES[i] == Settings.lang: pick.select(i)
+	pick.item_selected.connect(func(i: int):
+		Settings.lang = Lang.CODES[i]; Settings.save_cfg(); Lang.apply(Settings.lang)
+		if _uid() != "": _fs_patch("users/" + _uid(), {"lang": Settings.lang})
+		_show_settings())
+	var bg_card := _settings_card(body, "Background")
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); bg_card.add_child(row)
+	var group := ButtonGroup.new()
+	for item in [["dark", "Black"], ["light", "White"]]:
+		var b := Button.new(); b.text = str(item[1]); b.toggle_mode = true; b.button_group = group; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.custom_minimum_size = Vector2(0, 52)
+		b.button_pressed = Settings.theme == str(item[0])
+		b.add_theme_stylebox_override("pressed", ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10))
+		b.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06))); b.add_theme_color_override("font_hover_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
+		b.pressed.connect(_set_theme.bind(str(item[0]))); row.add_child(b)
+
+func _set_theme(theme: String) -> void:
+	if Settings.theme == theme: return
+	Settings.theme = theme; Settings.save_cfg()
+	if _uid() != "": _fs_patch("users/" + _uid(), {"theme": theme})
+	_apply_theme_now()
+
+## Re-skins the whole dashboard in place (background, sidebar, current screen) after the theme or language changed.
+func _apply_theme_now() -> void:
+	ThemeBuilder.apply_to(get_tree(), true)
+	_bg.color = ThemeBuilder.c(Color(0.043, 0.043, 0.047))
+	if _side != null:
+		var vis := _side.visible; _side.queue_free(); _side_buttons = {}; _build_sidebar(); _side.visible = vis
+	if _screen == "settings": _show_settings()
+	elif _screen == "dashboard": _show_dashboard()
+	elif _screen == "customization": _show_customization()
+	elif _screen == "friends": _show_friends()
+	elif _screen == "notifications": _show_notifications()
+	_fit()
+
+## Once per run, after sign-in: take the language + background saved on your account (changed on the website, say).
+func _sync_prefs() -> void:
+	if _account_info.is_empty() and not await _load_account_info(): return
+	var result := await _fs(HTTPClient.METHOD_GET, "users/" + _uid())
+	if not result.ok: return
+	var fields: Dictionary = result.data.get("fields", {})
+	var lang_value := str(_fs_read(fields.get("lang")))
+	var theme_value := str(_fs_read(fields.get("theme")))
+	var changed := false
+	if Lang.CODES.has(lang_value) and lang_value != Settings.lang: Settings.lang = lang_value; Lang.apply(lang_value); changed = true
+	if (theme_value == "light" or theme_value == "dark") and theme_value != Settings.theme: Settings.theme = theme_value; changed = true
+	if changed: Settings.save_cfg(); _apply_theme_now()
 
 # ---- Firebase helpers (Firestore REST with the signed-in user's token; the same rules as the website apply) ----
 func _uid() -> String:
@@ -723,13 +773,14 @@ func _show_dashboard() -> void:
 	_hide_auth_shell()
 	_screen = "dashboard"; _clear()
 	if not _device_registered: _device_registered = true; _register_device()
+	if not _prefs_synced: _prefs_synced = true; _sync_prefs()
 	_add_app_header()
 	_add_update_banner()
 	_add_tabs(false)
 	_add_text("Welcome, %s" % str(_profile.get("username", "player")), 20)
 	_add_friends_invite()
 	_add_text("Featured", 23)
-	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(card)
+	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); _col.add_child(card)
 	var wide := get_viewport().get_visible_rect().size.x >= 720.0
 	var body: BoxContainer = HBoxContainer.new() if wide else VBoxContainer.new(); body.add_theme_constant_override("separation", 0); card.add_child(body)
 	var art := TextureRect.new(); art.texture = load("res://Assets/baseplate.png"); art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
@@ -743,7 +794,7 @@ func _show_dashboard() -> void:
 	var desc := Label.new(); desc.text = "Explore a sunny world, meet other players, chat and play together."; desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(desc)
 	var open := Button.new(); open.text = "View game"; open.custom_minimum_size = Vector2(0, 48); open.pressed.connect(_show_details); info.add_child(open)
 	var custom_card := PanelContainer.new(); custom_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	custom_card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(custom_card)
+	custom_card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); _col.add_child(custom_card)
 	var custom_row := HBoxContainer.new(); custom_row.add_theme_constant_override("separation", 12); custom_card.add_child(custom_row)
 	var custom_intro := VBoxContainer.new(); custom_intro.size_flags_horizontal = Control.SIZE_EXPAND_FILL; custom_row.add_child(custom_intro)
 	var custom_title := Label.new(); custom_title.text = "Make your character yours"; custom_title.add_theme_font_size_override("font_size", 20); custom_intro.add_child(custom_title)
@@ -786,7 +837,7 @@ func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0
 func _add_character_customizer(parent: Node) -> void:
 	var title := Label.new(); title.text = "Character"; title.add_theme_font_size_override("font_size", 24); parent.add_child(title)
 	var panel := PanelContainer.new(); panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); parent.add_child(panel)
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); parent.add_child(panel)
 	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 12); panel.add_child(body)
 	var character := _character_data()
 	_character_preview = _make_avatar_preview(body, character, Vector2(0, 220))
@@ -816,7 +867,7 @@ func _add_character_customizer(parent: Node) -> void:
 		picker.color_changed.connect(func(_c): _preview_character())
 	var reset := Button.new(); reset.text = "Reset to defaults"; reset.custom_minimum_size = Vector2(0, 46); reset.pressed.connect(_reset_character_controls); body.add_child(reset)
 	var save := Button.new(); save.text = "Save customization"; save.custom_minimum_size = Vector2(0, 50); save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	save.add_theme_stylebox_override("normal", ThemeBuilder.box(Color(0.2, 0.42, 0.82), Color(0.27, 0.5, 0.92), 10))
+	save.add_theme_stylebox_override("normal", ThemeBuilder.box(ThemeBuilder.c(Color(0.2, 0.42, 0.82)), ThemeBuilder.c(Color(0.27, 0.5, 0.92)), 10))
 	save.pressed.connect(_save_character); body.add_child(save)
 	_character_status = Label.new(); _character_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _character_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_child(_character_status)
 

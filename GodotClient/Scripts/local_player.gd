@@ -32,6 +32,7 @@ func setup(display_name: String, color: Color, character: Dictionary = {}) -> vo
 	floor_snap_length = 0.3
 
 func set_shift_lock(on: bool) -> void:
+	if on and not (Settings.shift_lock_enabled and Settings.is_pc()): on = false      # only works when turned on in Settings (PC only)
 	if shift_lock == on: return
 	shift_lock = on; shift_lock_changed.emit(on)
 

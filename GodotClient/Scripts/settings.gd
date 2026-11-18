@@ -24,7 +24,10 @@ var fov := 70.0
 var cam_distance := 6.0
 var touch_opacity := 0.6
 var touch_size := 1.0
-var show_fps := false
+var performance := false     # PC only: stats panel (memory / network ping / CPU / GPU) under the menu + chat buttons
+var shift_lock_enabled := false   # PC only: Shift Lock only works in game when this is on (in-game menu > Settings)
+var lang := "en"             # app language (same codes as the website)
+var theme := "dark"          # "dark" (black) or "light" (white) background for the dashboard
 var show_names := true
 var fullscreen := false
 var registered_exe := ""
@@ -35,18 +38,23 @@ var protocol_launched := false
 
 func _ready() -> void:
 	load_cfg()
+	Lang.apply(lang)
 	_register_actions()
 	apply_audio()
 	if fullscreen: apply_window()
 
 func reset_defaults() -> void:
 	sensitivity = 0.003; volume = 0.8; quality = 1; fov = 70.0; cam_distance = 6.0; touch_opacity = 0.6; touch_size = 1.0
-	show_fps = false; show_names = true; fullscreen = false
+	performance = false; shift_lock_enabled = false; show_names = true; fullscreen = false
 	apply_audio(); apply_window(); save_cfg(); changed.emit()
 
 func apply_window() -> void:
 	if is_mobile(): return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+
+## Performance panel + Shift Lock are desktop-only features.
+func is_pc() -> bool:
+	return not is_mobile()
 
 func is_mobile() -> bool:
 	return OS.has_feature("mobile") or DisplayServer.is_touchscreen_available() or "--mobile" in OS.get_cmdline_user_args() or "--mobile" in OS.get_cmdline_args()
@@ -54,14 +62,14 @@ func is_mobile() -> bool:
 func load_cfg() -> void:
 	var c := ConfigFile.new()
 	if c.load(CFG_PATH) != OK: return
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "show_fps", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "show_names", "fullscreen"]:
 		set(k, c.get_value("s", k, get(k)))
 	native_remember = bool(c.get_value("auth", "remember", true))
 	native_refresh_token = str(c.get_value("auth", "refresh_token", "")) if native_remember else ""
 
 func save_cfg() -> void:
 	var c := ConfigFile.new()
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "show_fps", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "show_names", "fullscreen"]:
 		c.set_value("s", k, get(k))
 	c.set_value("auth", "remember", native_remember)
 	c.set_value("auth", "refresh_token", native_refresh_token if native_remember else "")

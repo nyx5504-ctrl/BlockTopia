@@ -2,7 +2,7 @@ class_name PauseMenu
 extends CanvasLayer
 ## Roblox-style game menu: player list, reports, settings and help, Reset Character / Leave / Resume at the bottom.
 ## Players: add friend, mute, block, report. Report: pick a player and a reason, add details, send to the BlockTopia team.
-## Settings: graphics, audio, camera, touch, fullscreen, FPS counter, name tags, reset. The header shows players, ping and FPS.
+## Settings: graphics, audio, camera, touch, fullscreen, Performance stats + Shift Lock (PC), name tags, reset. The header shows players and ping.
 ## Keys while the menu is open: Esc = resume, R = reset character, L = leave game (press twice).
 signal leave_requested
 signal respawn_requested
@@ -205,10 +205,13 @@ func _settings_page(parent: Node) -> void:
 	var o := OptionButton.new(); for q in ["Low", "Medium", "High"]: o.add_item("Graphics quality: " + q)
 	o.selected = Settings.quality; o.custom_minimum_size = Vector2(0, 46); o.item_selected.connect(func(i): Settings.quality = i; Settings.save_cfg(); Settings.changed.emit()); p.add_child(o)
 	if not _mobile: _check(p, "Fullscreen", Settings.fullscreen, func(on): Settings.fullscreen = on; Settings.apply_window())
-	_check(p, "Show FPS", Settings.show_fps, func(on): Settings.show_fps = on)
 	_check(p, "Show player names", Settings.show_names, func(on): Settings.show_names = on)
 	_section(p, "Audio")
 	_slider(p, "Volume", 0.0, 1.0, 0.01, Settings.volume, func(v): Settings.volume = v)
+	if not _mobile:
+		_section(p, "PC features")
+		_check(p, "Performance", Settings.performance, func(on): Settings.performance = on)
+		_check(p, "Shift Lock", Settings.shift_lock_enabled, func(on): Settings.shift_lock_enabled = on)
 	_section(p, "Camera")
 	if not _mobile: _slider(p, "Mouse sensitivity", 0.001, 0.008, 0.0002, Settings.sensitivity, func(v): Settings.sensitivity = v)
 	else: _slider(p, "Look sensitivity", 0.001, 0.008, 0.0002, Settings.sensitivity, func(v): Settings.sensitivity = v)
@@ -228,7 +231,7 @@ func _rebuild_settings() -> void:         # sliders keep their own value, so reb
 # ---------------- Help ----------------
 func _help_page(parent: Node) -> void:
 	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 6); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Help"] = p
-	var rows: Array = [["Left stick", "Move"], ["Jump button", "Jump"], ["Drag the right side", "Look around"], ["Lock button", "Shift Lock: character faces where you look"], ["Chat button", "Open chat"], ["Menu button", "Open this menu"]] if _mobile else [["W A S D / arrows", "Move"], ["Space", "Jump"], ["F11", "Fullscreen on / off"], ["F12", "Start / stop recording (red outline)"], ["Hold right mouse", "Look around"], ["Shift", "Shift Lock: mouse steers the camera, character faces forward"], ["Mouse wheel", "Zoom in / out"], ["Enter or /", "Open chat"], ["Tab", "Show or hide the player list"], ["Esc", "Open or close this menu"]]
+	var rows: Array = [["Left stick", "Move"], ["Jump button", "Jump"], ["Drag the right side", "Look around"], ["Chat button", "Open chat"], ["Menu button", "Open this menu"]] if _mobile else [["W A S D / arrows", "Move"], ["Space", "Jump"], ["F11", "Fullscreen on / off"], ["F12", "Start / stop recording (red outline)"], ["Hold right mouse", "Look around"], ["Shift", "Shift Lock (turn it on in Settings first): mouse steers the camera, character faces forward"], ["Mouse wheel", "Zoom in / out"], ["Enter or /", "Open chat"], ["Tab", "Show or hide the player list"], ["Esc", "Open or close this menu"]]
 	_section(p, "Controls")
 	for r in rows:
 		var h := HBoxContainer.new(); p.add_child(h)
@@ -251,7 +254,7 @@ func _process(delta: float) -> void:
 	if _stats_t <= 0.0:
 		_stats_t = 0.5
 		var n := Net.players.size(); var ping := ("%d ms" % Net.ping_ms) if Net.ping_ms >= 0 else "-- ms"
-		info_label.text = "%d player%s  |  %s  |  %d FPS" % [n, "" if n == 1 else "s", ping, Engine.get_frames_per_second()]
+		info_label.text = "%d player%s  |  %s" % [n, "" if n == 1 else "s", ping]
 
 func open(page := "Players") -> void:
 	_leave_armed = false; leave_btn.text = "Leave Game" if _mobile else "Leave Game   [L]"; show_page(page); _fit(); visible = true

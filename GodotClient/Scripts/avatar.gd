@@ -94,14 +94,37 @@ func _paint(mi: MeshInstance3D, parts: Dictionary, legacy_skin: Color) -> void:
 		bounds[role] = bb.expand(verts[v])
 	var sized := verts.duplicate()
 	var cols := PackedColorArray(); cols.resize(verts.size())
+	# Each part scales from the joint it hangs on (neck / shoulder / hip) and is then moved to stay attached to the (scaled) torso,
+	# so small or large parts never come apart.
+	var sc := {}
+	for role in ["head", "torso", "leftArm", "rightArm", "leftLeg", "rightLeg"]:
+		sc[role] = clampf(float((parts.get(role, {}) as Dictionary).get("size", 1.0)), 0.7, 1.3) if parts.get(role, {}) is Dictionary else 1.0
+	var tb: AABB = bounds.get("torso", AABB())
+	var tc := tb.position + tb.size * 0.5
+	var st: float = sc["torso"]
+	var new_top := tc.y + (tb.end.y - tc.y) * st
+	var new_bottom := tc.y + (tb.position.y - tc.y) * st
+	var anchor := {}; var shift := {}
+	for role in bounds:
+		var bb: AABB = bounds[role]; var c := bb.position + bb.size * 0.5
+		match role:
+			"torso": anchor[role] = c; shift[role] = Vector3.ZERO
+			"head":
+				anchor[role] = Vector3(c.x, bb.position.y, c.z); shift[role] = Vector3(tc.x + (c.x - tc.x) * st - c.x, new_top - tb.end.y, 0)
+			"leftArm", "rightArm":
+				var inner_x := bb.position.x if c.x > tc.x else bb.end.x
+				var edge_x := tb.position.x if c.x < tc.x else tb.end.x
+				anchor[role] = Vector3(inner_x, bb.end.y, c.z)
+				shift[role] = Vector3(tc.x + (edge_x - tc.x) * st - edge_x, new_top - tb.end.y, 0)
+			_:
+				anchor[role] = Vector3(c.x, bb.end.y, c.z); shift[role] = Vector3(tc.x + (c.x - tc.x) * st - c.x, new_bottom - tb.position.y, 0)
 	for v in verts.size():
 		var role := roles[v]
 		var spec: Dictionary = parts.get(role, {})
 		var fallback := legacy_skin if role in ["head", "leftArm", "rightArm"] else (DEFAULT_SHIRT if role == "torso" else PANTS)
 		var color := Color(str(spec.get("color", fallback.to_html(false))))
-		var scale := clampf(float(spec.get("size", 1.0)), 0.7, 1.3)
-		var bb: AABB = bounds[role]; var centre := bb.position + bb.size * 0.5
-		sized[v] = centre + (verts[v] - centre) * scale
+		var a: Vector3 = anchor[role]
+		sized[v] = a + (verts[v] - a) * float(sc[role]) + (shift[role] as Vector3)
 		cols[v] = Color(minf(color.r * 1.15, 1.0), minf(color.g * 1.15, 1.0), minf(color.b * 1.15, 1.0))
 	arr[Mesh.ARRAY_VERTEX] = sized
 	arr[Mesh.ARRAY_COLOR] = cols

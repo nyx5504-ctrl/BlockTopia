@@ -11,12 +11,12 @@ var overlay: Control
 var overlay_text: Label
 var overlay_back: Button
 var plist: PlayerList
-var lock_btn: IconButton
+var perf: PerfPanel
+var hud: CanvasLayer
 var world: WorldBuilder
 var sun: DirectionalLight3D
 var toast: PanelContainer
 var toast_label: Label
-var fps_label: Label
 var update_notice: Button
 var _toast_id := 0
 var _send_t := 0.0
@@ -26,9 +26,11 @@ var _fatal := false
 var _shotdir := ""
 
 func _ready() -> void:
+	ThemeBuilder.apply_to(get_tree(), false)       # the game always stays dark
 	world = WorldBuilder.new(); add_child(world); world.build(); sun = world.sun
 	_build_ui()
 	Settings.changed.connect(_apply_quality); _apply_quality()
+	Settings.changed.connect(func(): if local != null and not Settings.shift_lock_enabled and local.shift_lock: local.set_shift_lock(false))
 	Settings.app_update_available.connect(_on_app_update_available)
 	if Settings.update_available: _on_app_update_available(Settings.update_version)
 	Settings.check_for_app_update()
@@ -61,15 +63,11 @@ func _build_ui() -> void:
 	if Settings.is_mobile():
 		var tl := CanvasLayer.new(); tl.layer = 3; add_child(tl); touch = TouchControls.new(); tl.add_child(touch)
 		touch.is_ui = _touch_on_ui
-	var hud := CanvasLayer.new(); hud.layer = 8; add_child(hud)
-	lock_btn = IconButton.new("lock"); lock_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	var lb := lock_btn.custom_minimum_size.x
-	lock_btn.offset_right = -16; lock_btn.offset_left = -16 - lb; lock_btn.offset_bottom = -16 if not Settings.is_mobile() else -250; lock_btn.offset_top = lock_btn.offset_bottom - lb
-	lock_btn.pressed.connect(func(): if local != null and not (pause.visible or chat.typing): local.set_shift_lock(not local.shift_lock))
-	hud.add_child(lock_btn)
+	hud = CanvasLayer.new(); hud.layer = 8; add_child(hud)
+	if Settings.is_pc():
+		perf = PerfPanel.new(); perf.position = Vector2(12, 66); hud.add_child(perf)
 	toast = PanelContainer.new(); toast.set_anchors_preset(Control.PRESET_CENTER_TOP); toast.position = Vector2(-170, 16); toast.custom_minimum_size = Vector2(340, 0); toast.visible = false; toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
-	fps_label = Label.new(); fps_label.set_anchors_preset(Control.PRESET_CENTER_TOP); fps_label.position = Vector2(-40, 66); fps_label.add_theme_font_size_override("font_size", 16); fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9)); fps_label.add_theme_constant_override("outline_size", 6); fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(fps_label)
 	update_notice = Button.new(); update_notice.text = "Update available — tap to download"; update_notice.set_anchors_preset(Control.PRESET_TOP_RIGHT); update_notice.position = Vector2(-342, 18); update_notice.custom_minimum_size = Vector2(324, 46); update_notice.visible = false; update_notice.pressed.connect(func(): OS.shell_open(Settings.update_url)); hud.add_child(update_notice)
 	var ol := CanvasLayer.new(); ol.layer = 20; add_child(ol)
 	overlay = Control.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); ol.add_child(overlay)
@@ -91,7 +89,7 @@ func _on_app_update_available(version: String) -> void:
 func _touch_on_ui(p: Vector2) -> bool:
 	if pause.visible or overlay.visible or _leaving: return true
 	if fprompt != null and fprompt.covers(p): return true
-	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup, update_notice, lock_btn]:
+	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup, update_notice, perf]:
 		if ctl != null and ctl.is_visible_in_tree() and ctl.get_global_rect().has_point(p): return true
 	return false
 
@@ -122,7 +120,7 @@ func _on_welcome(m: Dictionary) -> void:
 	remotes.clear()
 	if local == null:
 		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch
-		local.shift_lock_changed.connect(func(on): lock_btn.active = on; _toast("Shift Lock on" if on else "Shift Lock off"))
+		local.shift_lock_changed.connect(func(on): _toast("Shift Lock on" if on else "Shift Lock off"))
 	local.teleport(Vector3(m.x, m.y, m.z))
 	for p in m.players: _add_remote(p)
 	chat.system("Welcome to Baseplate, %s! %s" % [Net.my_name, "Drag the right side of the screen to look around." if Settings.is_mobile() else "Hold the right mouse button to look around. Click a name in the player list for options."])
@@ -180,8 +178,9 @@ func _exit_game() -> void:
 # ---------------- per-frame ----------------
 func _process(delta: float) -> void:
 	world.animate(delta)
-	fps_label.visible = Settings.show_fps
-	if fps_label.visible: fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+	if perf != null:       # sits under the menu/chat buttons, and under the chat window while that is open
+		perf.visible = Settings.performance
+		perf.position = Vector2(12, (chat.window.position.y + chat.window.size.y + 8.0) if chat.window.visible else 66.0)
 	for id in remotes:
 		var r = remotes[id]; var n: Avatar = r.node
 		n.position = n.position.lerp(r.target, 1.0 - exp(-14.0 * delta)); n.rotation.y = lerp_angle(n.rotation.y, r.ry, 1.0 - exp(-14.0 * delta))
@@ -214,6 +213,8 @@ func _run_shots() -> void:      # used by Backend/test/shots.mjs to review visua
 	await get_tree().create_timer(1.2).timeout
 	chat.window.visible = true
 	await _snap("1_spawn")
+	Settings.performance = true; await get_tree().create_timer(5.0).timeout
+	perf._toggle("mem"); await _snap("1b_perf_memory"); perf._toggle("cpu"); await _snap("1c_perf_cpu"); perf._toggle("cpu")
 	local.test_move = Vector2(0, -1); await get_tree().create_timer(0.9).timeout
 	await _snap("2_run")
 	local.test_move = Vector2.ZERO; local.yaw = PI * 0.85; local.pitch = -0.05; Settings.cam_distance = 5.0; await get_tree().create_timer(0.6).timeout
@@ -225,7 +226,7 @@ func _run_shots() -> void:      # used by Backend/test/shots.mjs to review visua
 	await _snap("5_outer")
 	Settings.cam_distance = 6.0; local.yaw = 2.585; local.pitch = 0.6; await get_tree().create_timer(0.8).timeout
 	await _snap("6_sun")
-	Settings.cam_distance = 6.0; local.yaw = 0.0; local.pitch = -0.25; Settings.show_fps = true
+	Settings.cam_distance = 6.0; local.yaw = 0.0; local.pitch = -0.25; Settings.performance = true; Settings.shift_lock_enabled = true
 	plist._open_popup(Net.players.keys().filter(func(i): return i != Net.my_id)[0], plist._row_nodes[Net.players.keys().filter(func(i): return i != Net.my_id)[0]]); await _snap("6b_leaderboard_popup"); plist.popup.visible = false
 	fprompt._on_request(Net.players.keys().filter(func(i): return i != Net.my_id)[0], "Alice"); fprompt._on_request(99, "Bob_the_Builder"); await get_tree().create_timer(0.3).timeout; await _snap("6c_friend_request")
 	local.set_shift_lock(true); local.yaw = 0.4; Settings.cam_distance = 7.0; await get_tree().create_timer(0.8).timeout; await _snap("6d_shift_lock"); local.set_shift_lock(false)
