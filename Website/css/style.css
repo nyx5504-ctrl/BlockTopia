@@ -249,6 +249,7 @@ select.input { width: auto; min-width: 150px; height: 42px; }
 .character-editor { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(0, 1fr); gap: 18px; align-items: center; padding: 16px; }
 .character-preview { min-height: 270px; display: grid; place-items: center; overflow: hidden; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-md); }
 .character-preview svg { width: min(100%, 220px); height: 250px; overflow: visible; }
+.character-preview.is-3d { display: block; height: 320px; min-height: 320px; padding: 0; }
 .character-fields { display: grid; gap: 12px; min-width: 0; }
 .character-field, .part-field { display: grid; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .character-field span, .part-field > span { display: flex; justify-content: space-between; gap: 8px; }
@@ -264,6 +265,7 @@ select.input { width: auto; min-width: 150px; height: 42px; }
   .character-editor { grid-template-columns: 1fr; padding: 12px; }
   .character-preview { min-height: 220px; }
   .character-preview svg { height: 210px; }
+  .character-preview.is-3d { height: 280px; min-height: 280px; }
   .part-grid { grid-template-columns: 1fr; }
 }
 

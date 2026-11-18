@@ -1,0 +1,9 @@
+{
+  "name": "blocktopia-rig-preview",
+  "private": true,
+  "type": "module",
+  "description": "Builds Website/js/rig.bundle.js: the 3D R6 character preview (three.js + GLTFLoader) used in Settings > Customization.",
+  "scripts": { "build": "esbuild rig.src.js --bundle --minify --format=esm --outfile=../../Website/js/rig.bundle.js" },
+  "dependencies": { "three": "0.160.1" },
+  "devDependencies": { "esbuild": "0.25.0" }
+}

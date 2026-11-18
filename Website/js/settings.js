@@ -33,6 +33,15 @@ function readCharacterControls() {
   };
   return { height: clamp(Number($("#characterHeight").value), 0.75, 1.25, 1), bodyType: $("#characterBodyType").value, bodyColor: parts.head.color, parts };
 }
+let rig = null, rigLoading = false;
+// Loads the real R6 rig (same model the game uses). If WebGL or the model can't load, the flat SVG preview stays as the fallback.
+function loadRig() {
+  if (rig || rigLoading) return;
+  const box = $("#characterPreview"); if (!box) return;
+  rigLoading = true;
+  import("./rig.bundle.js").then(m => m.createRig(box, "assets/roblox-r6.glb")).then(r => { rig = r; box.classList.add("is-3d"); paintCharacterPreview(); })
+    .catch(() => { rigLoading = false; box.classList.remove("is-3d"); });
+}
 function paintCharacterPreview() {
   const c = readCharacterControls(), size = (part, base) => base * c.parts[part].size;
   $("#characterHeightValue").textContent = Math.round(c.height * 100) + "%";
@@ -51,6 +60,7 @@ function paintCharacterPreview() {
     '<ellipse cx="90" cy="' + (yHead+headH/2) + '" rx="' + (headW/2) + '" ry="' + (headH/2) + '" fill="' + c.parts.head.color + '"/>' +
     '<ellipse cx="82" cy="' + (yHead+headH*.42) + '" rx="2.8" ry="4.5" fill="#111"/><ellipse cx="98" cy="' + (yHead+headH*.42) + '" rx="2.8" ry="4.5" fill="#111"/>' +
     '<path d="M78 ' + (yHead+headH*.62) + ' Q90 ' + (yHead+headH*.92) + ' 102 ' + (yHead+headH*.62) + '" fill="none" stroke="#111" stroke-width="2.4" stroke-linecap="round"/></g></svg>';
+  if (rig) { rig.set(c); return; }
   $("#characterPreview").innerHTML = svg;
 }
 function renderCustomization() {
@@ -76,6 +86,7 @@ export function showSection(id) {
   if (!SECTIONS.includes(id)) id = "account";
   $$("[data-sec]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.sec === id)));
   $$("[data-panel]").forEach(p => { p.hidden = p.dataset.panel !== id; });
+  if (id === "customization") loadRig();
   if (id === "security") startDevices(); else { stopDevices?.(); stopDevices = null; }
   if (location.hash !== "#/settings/" + id) history.replaceState(null, "", "#/settings/" + id);
 }
