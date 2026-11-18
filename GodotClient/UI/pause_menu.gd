@@ -1,13 +1,13 @@
 class_name PauseMenu
 extends CanvasLayer
-## Roblox-style game menu: player list, character customization, reports, settings and help, Reset Character / Leave / Resume at the bottom.
+## Roblox-style game menu: player list, reports, settings and help, Reset Character / Leave / Resume at the bottom.
 ## Players: add friend, mute, block, report. Report: pick a player and a reason, add details, send to the BlockTopia team.
 ## Settings: graphics, audio, camera, touch, fullscreen, FPS counter, name tags, reset. The header shows players, ping and FPS.
 ## Keys while the menu is open: Esc = resume, R = reset character, L = leave game (press twice).
 signal leave_requested
 signal respawn_requested
 const REPORT_REASONS := [["Inappropriate chat", "inappropriate_chat"], ["Harassment or bullying", "abuse"], ["Inappropriate username", "inappropriate_name"], ["Cheating or exploiting", "cheating"], ["Spam", "spam"], ["Something else", "other"]]
-const TABS := ["Players", "Customization", "Report", "Settings", "Help"]
+const TABS := ["Players", "Report", "Settings", "Help"]
 var root: Control
 var panel: PanelContainer
 var pages := {}
@@ -20,12 +20,6 @@ var _leave_armed := false
 var _leave_token := 0
 var _mobile := false
 # report page
-var custom_preview: Avatar
-var custom_height: HSlider
-var custom_body_type: OptionButton
-var custom_sizes := {}
-var custom_colors := {}
-var custom_status: Label
 var rep_player: OptionButton
 var rep_ids: Array = []
 var rep_reason: OptionButton
@@ -59,7 +53,7 @@ func _ready() -> void:
 	# pages
 	var area := ScrollContainer.new(); area.size_flags_vertical = Control.SIZE_EXPAND_FILL; area.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; stack.add_child(area)
 	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; area.add_child(pv)
-	_players_page(pv); _customization_page(pv); _report_page(pv); _settings_page(pv); _help_page(pv)
+	_players_page(pv); _report_page(pv); _settings_page(pv); _help_page(pv)
 	# footer (Roblox order: Reset Character, Leave, Resume)
 	var foot := HBoxContainer.new(); foot.add_theme_constant_override("separation", 8); stack.add_child(foot)
 	_foot_btn(foot, "Reset Character", "R", func(): respawn_requested.emit(); close())
@@ -71,10 +65,8 @@ func _ready() -> void:
 	resume.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.8, 0.8, 0.83), Color(0.8, 0.8, 0.83)))
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: resume.add_theme_color_override(c, Color(0.05, 0.05, 0.06))
 	get_viewport().size_changed.connect(_fit); _fit()
-	Net.welcomed.connect(func(_m): _load_customization_controls())
 	Net.character_updated.connect(func(_c): if visible and pages["Players"].visible: _refresh_players())
 	Net.player_character_changed.connect(func(_id, _c): if visible and pages["Players"].visible: _refresh_players())
-	Net.character_save_result.connect(_on_character_save_result)
 	Net.player_joined.connect(func(_p): _on_roster())
 	Net.player_left.connect(func(_i, _n): _on_roster())
 	Net.mute_changed.connect(func(_i, _o): if visible: _refresh_players())
@@ -110,85 +102,6 @@ func _on_roster() -> void:
 func _players_page(parent: Node) -> void:
 	var page := VBoxContainer.new(); page.add_theme_constant_override("separation", 10); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(page); pages["Players"] = page
 	players_list = VBoxContainer.new(); players_list.add_theme_constant_override("separation", 8); players_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.add_child(players_list)
-
-func _customization_page(parent: Node) -> void:
-	var page := VBoxContainer.new(); page.add_theme_constant_override("separation", 10); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(page); pages["Customization"] = page
-	var hint := Label.new(); hint.text = "Change your character, then save it to your BlockTopia profile."; hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; hint.modulate = Color(1, 1, 1, 0.65); page.add_child(hint)
-	var holder := SubViewportContainer.new(); holder.stretch = true; holder.custom_minimum_size = Vector2(0, 180); holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.add_child(holder)
-	var view := SubViewport.new(); view.size = Vector2i(360, 190); view.transparent_bg = true; view.world_3d = World3D.new(); view.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE; holder.add_child(view)
-	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
-	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 3.8); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
-	custom_preview = Avatar.new(); custom_preview.setup(Net.my_name if Net.my_name != "" else "Player", Color(Net.my_color), Net.my_character, false); view.add_child(custom_preview)
-	_section(page, "Height and body type")
-	var height_label := Label.new(); height_label.text = "Height"; page.add_child(height_label)
-	custom_height = HSlider.new(); custom_height.min_value = 0.75; custom_height.max_value = 1.25; custom_height.step = 0.05; custom_height.custom_minimum_size = Vector2(0, 36); page.add_child(custom_height)
-	custom_body_type = OptionButton.new()
-	for item in ["Classic", "Slim", "Broad"]: custom_body_type.add_item(item)
-	custom_body_type.custom_minimum_size = Vector2(0, 44); page.add_child(custom_body_type)
-	var names := {"head": "Head", "torso": "Torso", "leftArm": "Left arm", "rightArm": "Right arm", "leftLeg": "Left leg", "rightLeg": "Right leg"}
-	_section(page, "Part size and color")
-	for part in names:
-		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11), Color(0.19, 0.19, 0.21), 10)); page.add_child(card)
-		var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 4); card.add_child(stack)
-		var label := Label.new(); label.text = names[part]; stack.add_child(label)
-		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 8); stack.add_child(row)
-		var slider := HSlider.new(); slider.min_value = 0.7; slider.max_value = 1.3; slider.step = 0.05; slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL; slider.custom_minimum_size = Vector2(0, 34); row.add_child(slider)
-		var picker := ColorPickerButton.new(); picker.custom_minimum_size = Vector2(52, 40); row.add_child(picker)
-		custom_sizes[part] = slider; custom_colors[part] = picker
-		slider.value_changed.connect(func(_v): _update_customization_preview())
-		picker.color_changed.connect(func(_c): _update_customization_preview())
-	custom_height.value_changed.connect(func(_v): _update_customization_preview())
-	custom_body_type.item_selected.connect(func(_i): _update_customization_preview())
-	var save := Button.new(); save.text = "Save customization"; save.custom_minimum_size = Vector2(0, 50); save.pressed.connect(_save_customization); page.add_child(save)
-	custom_status = Label.new(); custom_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; custom_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; page.add_child(custom_status)
-	_load_customization_controls()
-
-func _character_defaults() -> Dictionary:
-	var value: Variant = Net.my_character.get("parts", {})
-	var parts: Dictionary = value if value is Dictionary else {}
-	var skin := str(Net.my_character.get("bodyColor", "#f2c744"))
-	var defaults := {
-		"head": {"size": 1.0, "color": skin}, "torso": {"size": 1.0, "color": "#2f6fd6"},
-		"leftArm": {"size": 1.0, "color": skin}, "rightArm": {"size": 1.0, "color": skin},
-		"leftLeg": {"size": 1.0, "color": "#3f9a52"}, "rightLeg": {"size": 1.0, "color": "#3f9a52"}
-	}
-	for key in defaults:
-		var old: Variant = parts.get(key, {})
-		if old is Dictionary:
-			defaults[key].size = clampf(float(old.get("size", 1.0)), 0.7, 1.3)
-			defaults[key].color = str(old.get("color", defaults[key].color))
-	return defaults
-
-func _load_customization_controls() -> void:
-	if custom_height == null: return
-	var c := Net.my_character
-	custom_height.value = clampf(float(c.get("height", 1.0)), 0.75, 1.25)
-	var types := ["classic", "slim", "broad"]; var index := types.find(str(c.get("bodyType", "classic")))
-	custom_body_type.select(maxi(index, 0))
-	var parts := _character_defaults()
-	for part in custom_sizes:
-		custom_sizes[part].value = float(parts[part].size)
-		custom_colors[part].color = Color(str(parts[part].color))
-	_update_customization_preview()
-
-func _read_customization() -> Dictionary:
-	var types := ["classic", "slim", "broad"]
-	var parts := {}
-	for part in custom_sizes:
-		parts[part] = {"size": custom_sizes[part].value, "color": custom_colors[part].color.to_html(false)}
-	return {"height": custom_height.value, "bodyType": types[custom_body_type.selected], "bodyColor": parts["head"]["color"], "parts": parts}
-
-func _update_customization_preview() -> void:
-	if custom_preview == null or not is_instance_valid(custom_preview) or custom_height == null: return
-	custom_preview.apply_character(_read_customization())
-
-func _save_customization() -> void:
-	if Net.state != "online": custom_status.text = "Connect to a game before saving customization."; return
-	custom_status.text = "Saving..."
-	Net.save_character(_read_customization())
-
-func _on_character_save_result(ok: bool) -> void:
-	if custom_status: custom_status.text = "Customization saved to your profile." if ok else "Couldn't save your customization. Try again."
 
 func _face_color(info: Dictionary) -> Color:
 	var character: Variant = info.get("character", {})

@@ -28,6 +28,7 @@ var show_fps := false
 var show_names := true
 var fullscreen := false
 var registered_exe := ""
+var device_id := ""         # this install's id under Settings > Security on the website
 var launch := {}            # {game, code, ws}
 var protocol_launched := false
 # Firebase ID tokens stay in memory; only the refresh token is persisted when "Keep me logged in" is enabled.
@@ -53,14 +54,14 @@ func is_mobile() -> bool:
 func load_cfg() -> void:
 	var c := ConfigFile.new()
 	if c.load(CFG_PATH) != OK: return
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "show_fps", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "show_fps", "show_names", "fullscreen"]:
 		set(k, c.get_value("s", k, get(k)))
 	native_remember = bool(c.get_value("auth", "remember", true))
 	native_refresh_token = str(c.get_value("auth", "refresh_token", "")) if native_remember else ""
 
 func save_cfg() -> void:
 	var c := ConfigFile.new()
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "show_fps", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "show_fps", "show_names", "fullscreen"]:
 		c.set_value("s", k, get(k))
 	c.set_value("auth", "remember", native_remember)
 	c.set_value("auth", "refresh_token", native_refresh_token if native_remember else "")

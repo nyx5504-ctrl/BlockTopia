@@ -4,6 +4,7 @@ const FIREBASE_API_KEY := "AIzaSyCdEvulpM-5MGOTqQhcIrCaeylSMzXtoaA"
 const AUTH_URL := "https://identitytoolkit.googleapis.com/v1/accounts:"
 const TOKEN_URL := "https://securetoken.googleapis.com/v1/token"
 const BACKEND_URL := "https://blocktopia-server-i1bq.onrender.com"
+const FIRESTORE_URL := "https://firestore.googleapis.com/v1/projects/blocktopia-f3341/databases/(default)/documents/"
 
 var _http: HTTPRequest
 var _scroll: ScrollContainer
@@ -41,6 +42,10 @@ var _character_type: OptionButton
 var _character_part_sizes := {}
 var _character_part_colors := {}
 var _character_status: Label
+var _settings_section := "account"
+var _settings_gen := 0
+var _account_info: Dictionary = {}      # Firebase accounts:lookup (email, verified, created, last sign-in)
+var _device_registered := false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -431,52 +436,293 @@ func _mark_notifications_read() -> void:
 		return
 	if _screen == "notifications": _show_notifications()
 
-func _show_settings() -> void:
+# ---------------- Settings: Account / Security / Privacy / Language (same sections as the website) ----------------
+func _show_settings(section := "") -> void:
 	_hide_auth_shell()
+	if section != "": _settings_section = section
+	_settings_gen += 1
+	var gen := _settings_gen
 	_screen = "settings"; _clear()
 	_add_app_header()
 	_add_update_banner()
 	_add_tabs(false)
 	_add_text("Settings", 26)
-	_add_text("Manage your BlockTopia account and app preferences.", 15, true)
-	var account := PanelContainer.new(); account.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	account.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(account)
-	var account_body := VBoxContainer.new(); account_body.add_theme_constant_override("separation", 8)
-	var account_margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]: account_margin.add_theme_constant_override("margin_" + side, 14)
-	account.add_child(account_margin); account_margin.add_child(account_body)
-	var account_title := Label.new(); account_title.text = "Account"; account_title.add_theme_font_size_override("font_size", 19); account_body.add_child(account_title)
-	var account_name := Label.new(); account_name.text = "Signed in as %s" % str(_profile.get("username", "Player")); account_name.modulate = Color(1, 1, 1, 0.68); account_body.add_child(account_name)
-	var website_settings := Button.new(); website_settings.text = "Open account, security, privacy and language settings"; website_settings.custom_minimum_size = Vector2(0, 44); website_settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL; website_settings.pressed.connect(_open_website_settings); account_body.add_child(website_settings)
-	var game := PanelContainer.new(); game.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	game.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); _col.add_child(game)
-	var game_body := VBoxContainer.new(); game_body.add_theme_constant_override("separation", 10)
-	var game_margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]: game_margin.add_theme_constant_override("margin_" + side, 14)
-	game.add_child(game_margin); game_margin.add_child(game_body)
-	var game_title := Label.new(); game_title.text = "App preferences"; game_title.add_theme_font_size_override("font_size", 19); game_body.add_child(game_title)
-	var volume_label := Label.new(); volume_label.text = "Volume"; game_body.add_child(volume_label)
-	var volume := HSlider.new(); volume.min_value = 0; volume.max_value = 100; volume.step = 1; volume.value = Settings.volume * 100.0; volume.custom_minimum_size = Vector2(0, 28); game_body.add_child(volume)
-	volume.value_changed.connect(func(value: float): Settings.volume = value / 100.0; Settings.save_cfg())
-	var fps := CheckBox.new(); fps.text = "Show FPS"; fps.button_pressed = Settings.show_fps; game_body.add_child(fps)
-	fps.toggled.connect(func(value: bool): Settings.show_fps = value; Settings.save_cfg())
-	var names := CheckBox.new(); names.text = "Show player names"; names.button_pressed = Settings.show_names; game_body.add_child(names)
-	names.toggled.connect(func(value: bool): Settings.show_names = value; Settings.save_cfg())
-	if not Settings.is_mobile():
-		var fullscreen := CheckBox.new(); fullscreen.text = "Fullscreen"; fullscreen.button_pressed = Settings.fullscreen; game_body.add_child(fullscreen)
-		fullscreen.toggled.connect(func(value: bool): Settings.fullscreen = value; Settings.save_cfg(); Settings.apply_window())
-	var links := HBoxContainer.new(); links.add_theme_constant_override("separation", 8); _col.add_child(links)
-	var friends := Button.new(); friends.text = "Friends"; friends.size_flags_horizontal = Control.SIZE_EXPAND_FILL; friends.pressed.connect(_show_friends); links.add_child(friends)
-	var notices := Button.new(); notices.text = "Notifications"; notices.size_flags_horizontal = Control.SIZE_EXPAND_FILL; notices.pressed.connect(_show_notifications); links.add_child(notices)
-	_fit()
+	_add_settings_tabs()
+	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 14); body.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _col.add_child(body)
+	if _account_info.is_empty():
+		var loading := _settings_note(body, "Loading your account…")
+		_fit()
+		var loaded := await _load_account_info()
+		if gen != _settings_gen or _screen != "settings": return
+		loading.queue_free()
+		if not loaded:
+			_settings_note(body, "Couldn't load your account. Check your connection and try again.")
+			var retry := Button.new(); retry.text = "Try again"; retry.custom_minimum_size = Vector2(0, 46); retry.pressed.connect(_show_settings); body.add_child(retry)
+			_fit(); return
+	match _settings_section:
+		"security": await _build_security(body, gen)
+		"privacy": await _build_privacy(body, gen)
+		"language": _build_language(body)
+		_: _build_account(body)
+	if gen == _settings_gen and _screen == "settings": _fit()
 
-func _open_website_settings() -> void:
-	OS.shell_open(Settings.WEBSITE_URL + "#/settings/account")
+func _add_settings_tabs() -> void:
+	var flow := HFlowContainer.new(); flow.add_theme_constant_override("h_separation", 8); flow.add_theme_constant_override("v_separation", 8); flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _col.add_child(flow)
+	var group := ButtonGroup.new()
+	var off := ThemeBuilder.box(Color(0.12, 0.12, 0.14), Color(0.22, 0.22, 0.25), 10)
+	var on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95), 10)
+	for item in [["account", "Account"], ["security", "Security"], ["privacy", "Privacy"], ["language", "Language"]]:
+		var b := Button.new(); b.text = str(item[1]); b.toggle_mode = true; b.button_group = group; b.custom_minimum_size = Vector2(110, 42)
+		b.add_theme_stylebox_override("normal", off); b.add_theme_stylebox_override("hover", off); b.add_theme_stylebox_override("pressed", on); b.add_theme_stylebox_override("hover_pressed", on)
+		b.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06)); b.add_theme_color_override("font_hover_pressed_color", Color(0.05, 0.05, 0.06))
+		b.button_pressed = str(item[0]) == _settings_section
+		b.pressed.connect(_show_settings.bind(str(item[0])))
+		flow.add_child(b)
 
+func _settings_card(parent: Node, title := "") -> VBoxContainer:
+	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.12), Color(0.24, 0.24, 0.28), 14)); parent.add_child(card)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 14)
+	card.add_child(margin)
+	var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 10); margin.add_child(stack)
+	if title != "":
+		var heading := Label.new(); heading.text = title; heading.add_theme_font_size_override("font_size", 19); stack.add_child(heading)
+	return stack
+
+func _settings_note(parent: Node, text: String) -> Label:
+	var l := Label.new(); l.text = text; l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; l.modulate = Color(1, 1, 1, 0.68); l.add_theme_font_size_override("font_size", 15)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(l); return l
+
+func _settings_row(parent: Node, label: String, value: String) -> Label:
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 12); parent.add_child(row)
+	var l := Label.new(); l.text = label; l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; l.custom_minimum_size = Vector2(110, 0); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(l)
+	var v := Label.new(); v.text = value; v.modulate = Color(1, 1, 1, 0.72); v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; v.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	v.custom_minimum_size = Vector2(120, 0); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(v)
+	return v
+
+func _settings_button(parent: Node, text: String, callback: Callable) -> Button:
+	var b := Button.new(); b.text = text; b.custom_minimum_size = Vector2(0, 46); b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if callback.is_valid(): b.pressed.connect(callback)
+	parent.add_child(b); return b
+
+func _settings_field(parent: Node, placeholder: String) -> LineEdit:
+	var line := LineEdit.new(); line.placeholder_text = placeholder; line.secret = true
+	line.custom_minimum_size = Vector2(0, 46); line.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(line); return line
+
+func _settings_option(parent: Node, label: String, items: Array, current: String, field: String, status: Label) -> void:
+	var l := Label.new(); l.text = label; l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; parent.add_child(l)
+	var pick := OptionButton.new(); pick.custom_minimum_size = Vector2(0, 46); pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(pick)
+	for i in items.size():
+		pick.add_item(str(items[i][1]), i)
+		if str(items[i][0]) == current: pick.select(i)
+	pick.item_selected.connect(_save_setting_choice.bind(items, field, status))
+
+func _fmt_ms(value: Variant) -> String:
+	var seconds := int(str(value)) / 1000
+	return "—" if seconds <= 0 else Time.get_date_string_from_unix_time(seconds)
+
+# ---- Account ----
+func _build_account(body: Node) -> void:
+	var card := _settings_card(body, "Account")
+	_settings_row(card, "Username", str(_profile.get("username", "Player")))
+	_settings_note(card, "Usernames can't be changed.")
+	_settings_row(card, "Email", str(_account_info.get("email", "")))
+	var verified := bool(_account_info.get("emailVerified", false))
+	var verify_state := _settings_row(card, "Email status", "Verified" if verified else "Not verified")
+	if not verified:
+		var resend := _settings_button(card, "Resend verification email", Callable())
+		resend.pressed.connect(_resend_verification.bind(resend, verify_state))
+	var password := _settings_card(body, "Password")
+	var open := _settings_button(password, "Change password", Callable())
+	var form := VBoxContainer.new(); form.visible = false; form.add_theme_constant_override("separation", 8); password.add_child(form)
+	var current := _settings_field(form, "Current password")
+	var fresh := _settings_field(form, "New password (8+ characters)")
+	var confirm := _settings_field(form, "Confirm new password")
+	var status := _settings_note(form, "")
+	var save := _settings_button(form, "Save password", Callable())
+	open.pressed.connect(func(): form.visible = not form.visible)
+	save.pressed.connect(_change_password.bind(current, fresh, confirm, status, save, form))
+	var out := _settings_button(body, "Log out", _sign_out)
+	out.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
+
+func _resend_verification(button: Button, status: Label) -> void:
+	button.disabled = true; status.text = "Sending…"
+	var result := await _api_auth("sendOobCode", {"requestType": "VERIFY_EMAIL", "idToken": _id_token})
+	if is_instance_valid(status): status.text = "Email sent" if result.ok else "Couldn't send"
+	if is_instance_valid(button): button.disabled = false
+
+func _change_password(current: LineEdit, fresh: LineEdit, confirm: LineEdit, status: Label, save: Button, form: Control) -> void:
+	if _busy: return
+	if current.text == "" or fresh.text == "" or confirm.text == "": status.text = "Fill in all three fields."; return
+	if fresh.text.length() < 8: status.text = "Use at least 8 characters."; return
+	if fresh.text != confirm.text: status.text = "The new passwords don't match."; return
+	_busy = true; save.disabled = true; status.text = "Saving…"
+	var email := str(_account_info.get("email", ""))
+	var check := await _request_json(AUTH_URL + "signInWithPassword?key=" + FIREBASE_API_KEY, {"email": email, "password": current.text, "returnSecureToken": true})
+	if not check.ok:
+		_busy = false
+		if is_instance_valid(save): save.disabled = false
+		if is_instance_valid(status): status.text = "Your current password isn't right." if int(check.code) == 400 else "Couldn't check your password. Try again."
+		return
+	var changed := await _request_json(AUTH_URL + "update?key=" + FIREBASE_API_KEY, {"idToken": str(check.data.get("idToken", "")), "password": fresh.text, "returnSecureToken": true})
+	_busy = false
+	if changed.ok: _store_tokens(changed.data, Settings.native_remember)
+	if not is_instance_valid(status): return
+	save.disabled = false
+	if changed.ok:
+		current.text = ""; fresh.text = ""; confirm.text = ""; form.visible = false
+	status.text = "Password updated." if changed.ok else _auth_error(changed.data)
+
+# ---- Security ----
+func _build_security(body: Node, gen: int) -> void:
+	var summary := _settings_card(body, "Security")
+	var count := _settings_row(summary, "Devices signed in", "…")
+	_settings_row(summary, "Account created", _fmt_ms(_account_info.get("createdAt", "0")))
+	_settings_row(summary, "Last sign-in", _fmt_ms(_account_info.get("lastLoginAt", "0")))
+	var card := _settings_card(body, "Your devices")
+	var list := VBoxContainer.new(); list.add_theme_constant_override("separation", 12); card.add_child(list)
+	_settings_note(list, "Loading devices…")
+	_settings_note(card, "Signing out a device logs it out the next time it opens BlockTopia.")
+	var result := await _fs(HTTPClient.METHOD_GET, "users/%s/devices?pageSize=100" % _uid())
+	if gen != _settings_gen or _screen != "settings": return
+	for child in list.get_children(): child.queue_free()
+	if not result.ok:
+		_settings_note(list, "Couldn't load your devices. Try again."); count.text = "—"; return
+	var devices: Array = []
+	for doc in result.data.get("documents", []):
+		var fields: Dictionary = doc.get("fields", {})
+		devices.append({"id": str(doc.get("name", "")).get_file(), "name": str(_fs_read(fields.get("name"))), "type": str(_fs_read(fields.get("type"))), "revoked": _fs_read(fields.get("revoked")) == true, "last": _fs_time(fields.get("lastActive"))})
+	devices.sort_custom(func(a, b): return int(a.last) > int(b.last))
+	var active := 0
+	for d in devices:
+		if not d.revoked: active += 1
+	count.text = str(active)
+	if devices.is_empty(): _settings_note(list, "No devices yet.")
+	for d in devices:
+		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); list.add_child(row)
+		var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(info)
+		var title := Label.new(); title.text = str(d.name) if str(d.name) != "" and str(d.name) != "<null>" else "Unknown device"; title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(title)
+		var sub := "Signed out" if d.revoked else ("Active now" if int(Time.get_unix_time_from_system()) - int(d.last) < 180 else "Last active " + Time.get_date_string_from_unix_time(int(d.last)))
+		_settings_note(info, sub)
+		if str(d.id) == Settings.device_id:
+			var tag := Label.new(); tag.text = "This device"; tag.modulate = Color(1, 1, 1, 0.68); row.add_child(tag)
+		else:
+			var action := Button.new(); action.text = "Remove" if d.revoked else "Sign out"; action.custom_minimum_size = Vector2(100, 44)
+			action.pressed.connect(_device_action.bind("remove" if d.revoked else "out", str(d.id))); row.add_child(action)
+
+func _device_action(action: String, id: String) -> void:
+	var path := "users/%s/devices/%s" % [_uid(), id]
+	if action == "out": await _fs_patch(path, {"revoked": true, "revokedAt": int(Time.get_unix_time_from_system() * 1000.0)})
+	else: await _fs(HTTPClient.METHOD_DELETE, path)
+	if _screen == "settings" and _settings_section == "security": _show_settings()
+
+# ---- Privacy ----
+func _build_privacy(body: Node, gen: int) -> void:
+	var card := _settings_card(body, "Privacy")
+	var loading := _settings_note(card, "Loading…")
+	var result := await _fs(HTTPClient.METHOD_GET, "users/" + _uid())
+	if gen != _settings_gen or _screen != "settings": return
+	loading.queue_free()
+	if not result.ok:
+		_settings_note(card, "Couldn't load your privacy settings. Try again."); return
+	var fields: Dictionary = result.data.get("fields", {})
+	var requests_value: Variant = _fs_read(fields.get("allowRequests"))
+	var join_value: Variant = _fs_read(fields.get("allowJoin"))
+	var status := _settings_note(card, "")
+	_settings_option(card, "Who can send you friend requests", [["everyone", "Everyone"], ["none", "No one"]], "none" if requests_value == "none" else "everyone", "allowRequests", status)
+	_settings_option(card, "Who can join you in a game", [["friends", "Friends only"], ["nobody", "No one"]], "nobody" if join_value == "nobody" else "friends", "allowJoin", status)
+
+func _save_setting_choice(index: int, items: Array, field: String, status: Label) -> void:
+	status.text = "Saving…"
+	var result := await _fs_patch("users/" + _uid(), {field: str(items[index][0])})
+	if is_instance_valid(status): status.text = "Saved." if result.ok else "Couldn't save. Try again."
+
+# ---- Language ----
+func _build_language(body: Node) -> void:
+	var card := _settings_card(body, "Language")
+	_settings_row(card, "App language", "English")
+	_settings_note(card, "The app is in English for now. Your website language is changed on the website.")
+	_settings_button(card, "Open website language settings", func(): OS.shell_open(Settings.WEBSITE_URL + "#/settings/language"))
+
+# ---- Firebase helpers (Firestore REST with the signed-in user's token; the same rules as the website apply) ----
+func _uid() -> String:
+	return str(_account_info.get("localId", ""))
+
+func _api_auth(action: String, body: Dictionary) -> Dictionary:
+	return await _request_json(AUTH_URL + action + "?key=" + FIREBASE_API_KEY, body)
+
+func _load_account_info() -> bool:
+	if not await _ensure_fresh_token(): return false
+	var result := await _api_auth("lookup", {"idToken": _id_token})
+	if not result.ok: return false
+	var users: Array = result.data.get("users", [])
+	if users.is_empty(): return false
+	_account_info = users[0]
+	return true
+
+func _fs(method: int, path: String, body := {}) -> Dictionary:
+	if not await _ensure_fresh_token(): return {"ok": false, "code": 401, "data": {}, "error": "Your session expired. Please sign in again."}
+	var headers := PackedStringArray(["Content-Type: application/json", "Authorization: Bearer " + _id_token])
+	return await _request_raw(FIRESTORE_URL + path, headers, method, "" if body.is_empty() else JSON.stringify(body))
+
+func _fs_value(value: Variant) -> Dictionary:
+	if value is bool: return {"booleanValue": value}
+	if value is int: return {"integerValue": str(value)}
+	return {"stringValue": str(value)}
+
+func _fs_patch(path: String, fields: Dictionary) -> Dictionary:
+	var query := PackedStringArray()
+	var typed := {}
+	for key in fields:
+		query.append("updateMask.fieldPaths=" + str(key).uri_encode())
+		typed[str(key)] = _fs_value(fields[key])
+	return await _fs(HTTPClient.METHOD_PATCH, path + "?" + "&".join(query), {"fields": typed})
+
+func _fs_read(value: Variant) -> Variant:
+	if not (value is Dictionary): return null
+	if value.has("stringValue"): return value.stringValue
+	if value.has("booleanValue"): return value.booleanValue
+	if value.has("integerValue"): return int(str(value.integerValue))
+	if value.has("timestampValue"): return value.timestampValue
+	return null
+
+func _fs_time(value: Variant) -> int:
+	var raw: Variant = _fs_read(value)
+	if raw == null: return 0
+	return int(Time.get_unix_time_from_datetime_string(str(raw).substr(0, 19)))
+
+func _now_iso() -> String:
+	return Time.get_datetime_string_from_system(true) + "Z"
+
+# Lists this app under Settings > Security (like each browser does on the website) and honors "Sign out" from the website.
+func _register_device() -> void:
+	if _account_info.is_empty() and not await _load_account_info(): return
+	if Settings.device_id == "":
+		Settings.device_id = "app-%d-%d" % [int(Time.get_unix_time_from_system()), randi() % 1000000]
+		Settings.save_cfg()
+	var path := "users/%s/devices/%s" % [_uid(), Settings.device_id]
+	var existing := await _fs(HTTPClient.METHOD_GET, path)
+	var fields: Dictionary = existing.data.get("fields", {}) if existing.ok else {}
+	if _fs_read(fields.get("revoked")) == true:
+		var revoked_at := 0
+		var raw_revoked: Variant = _fs_read(fields.get("revokedAt"))
+		if raw_revoked != null: revoked_at = int(raw_revoked)
+		if revoked_at > int(str(_account_info.get("lastLoginAt", "0"))):
+			_clear_native_session(); _auth_mode = "login"; _show_auth("This device was signed out from your account settings.")
+			return
+	var info := {"name": "BlockTopia App · " + OS.get_name(), "browser": "BlockTopia App", "os": OS.get_name(), "type": "phone" if Settings.is_mobile() else "desktop", "revoked": false}
+	var typed := {"lastActive": {"timestampValue": _now_iso()}}
+	if not existing.ok: typed["firstSeen"] = {"timestampValue": _now_iso()}
+	for key in info: typed[key] = _fs_value(info[key])
+	var query := PackedStringArray()
+	for key in typed: query.append("updateMask.fieldPaths=" + str(key).uri_encode())
+	await _fs(HTTPClient.METHOD_PATCH, path + "?" + "&".join(query), {"fields": typed})
 
 func _show_dashboard() -> void:
 	_hide_auth_shell()
 	_screen = "dashboard"; _clear()
+	if not _device_registered: _device_registered = true; _register_device()
 	_add_app_header()
 	_add_update_banner()
 	_add_tabs(false)
@@ -697,7 +943,7 @@ func _sign_out() -> void:
 	_clear_native_session(); _auth_mode = "login"; _show_auth()
 
 func _clear_native_session() -> void:
-	_id_token = ""; _refresh_token = ""; _token_expiry = 0; _profile = {}; _reaction = ""; _report_open = false
+	_id_token = ""; _refresh_token = ""; _token_expiry = 0; _profile = {}; _reaction = ""; _report_open = false; _account_info = {}; _device_registered = false
 	Settings.clear_native_session()
 
 func _store_tokens(data: Dictionary, remember := true) -> void:
@@ -730,9 +976,14 @@ func _request_json(url: String, body: Dictionary, bearer := "") -> Dictionary:
 	return await _request_raw(url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
 
 func _request_raw(url: String, headers: PackedStringArray, method: int, body: String) -> Dictionary:
-	var err := _http.request(url, headers, method, body)
-	if err != OK: return {"ok": false, "code": 0, "data": {}, "error": "Could not connect. Check your internet and try again."}
-	var reply: Array = await _http.request_completed
+	# One HTTPRequest per call, so background requests (device registration) can't collide with screen requests.
+	var http := HTTPRequest.new(); http.timeout = 20.0; add_child(http)
+	var err := http.request(url, headers, method, body)
+	if err != OK:
+		http.queue_free()
+		return {"ok": false, "code": 0, "data": {}, "error": "Could not connect. Check your internet and try again."}
+	var reply: Array = await http.request_completed
+	http.queue_free()
 	var code := int(reply[1])
 	var parsed: Variant = JSON.parse_string((reply[3] as PackedByteArray).get_string_from_utf8())
 	var data: Dictionary = parsed if parsed is Dictionary else {}
