@@ -46,10 +46,23 @@ func _ready() -> void:
 		else: _fatal = true; _show("Sign in and choose Play from the dashboard.")
 
 func _apply_quality() -> void:
-	var q := Settings.quality
-	sun.shadow_enabled = q >= 1
-	get_viewport().msaa_3d = Viewport.MSAA_2X if q >= 2 else Viewport.MSAA_DISABLED
-	sun.directional_shadow_max_distance = 140.0 if q >= 2 else 80.0
+	var g := Settings.graphics
+	var far := Settings.view_distance()
+	sun.shadow_enabled = g >= 3
+	sun.directional_shadow_max_distance = minf(far, 40.0 + g * 16.0)
+	var vp := get_viewport()
+	vp.msaa_3d = Viewport.MSAA_4X if g >= 9 else (Viewport.MSAA_2X if g >= 6 else Viewport.MSAA_DISABLED)
+	if local != null: local.cam.far = far
+	_apply_view_distance()
+
+## Remote players past the view distance are hidden (the baseplate and everything else is clipped by the camera's far plane).
+func _apply_view_distance() -> void:
+	if local == null: return
+	var far := Settings.view_distance()
+	var origin := local.global_position
+	for id in remotes:
+		var n: Avatar = remotes[id].node
+		n.visible = n.global_position.distance_to(origin) <= far
 
 # ---------------- UI ----------------
 func _build_ui() -> void:
@@ -119,7 +132,7 @@ func _on_welcome(m: Dictionary) -> void:
 	for id in remotes.keys(): remotes[id].node.queue_free()
 	remotes.clear()
 	if local == null:
-		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch
+		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch; local.cam.far = Settings.view_distance()
 		local.shift_lock_changed.connect(func(on): _toast("Shift Lock on" if on else "Shift Lock off"))
 	local.teleport(Vector3(m.x, m.y, m.z))
 	for p in m.players: _add_remote(p)
@@ -183,6 +196,7 @@ func _process(delta: float) -> void:
 		var r = remotes[id]; var n: Avatar = r.node
 		n.position = n.position.lerp(r.target, 1.0 - exp(-14.0 * delta)); n.rotation.y = lerp_angle(n.rotation.y, r.ry, 1.0 - exp(-14.0 * delta))
 	if local == null: return
+	_apply_view_distance()
 	local.blocked = pause.visible or chat.typing or overlay.visible or _leaving
 	if local.blocked: local.rmb = false
 	if local.global_position.y < -50.0: Net.request_respawn()

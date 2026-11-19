@@ -195,6 +195,30 @@ func _slider(parent: Node, label: String, lo: float, hi: float, step: float, val
 	var s := HSlider.new(); s.min_value = lo; s.max_value = hi; s.step = step; s.value = val; s.custom_minimum_size = Vector2(0, 34 if _mobile else 26)
 	s.value_changed.connect(func(v): cb.call(v); Settings.save_cfg(); Settings.changed.emit()); parent.add_child(s)
 
+## Graphics level as a row of 10 squares: click or drag across them (1 = lowest, 10 = highest).
+func _graphics_bar(parent: Node) -> void:
+	var head := Label.new(); parent.add_child(head)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 4); parent.add_child(row)
+	var squares: Array = []
+	var paint := func():
+		head.text = "Graphics quality: %d / 10" % Settings.graphics
+		for k in squares.size():
+			var on: bool = k < Settings.graphics
+			var st := StyleBoxFlat.new(); st.set_corner_radius_all(4); st.set_border_width_all(2)
+			st.bg_color = Color(0.36, 0.5, 1.0) if on else Color(0.16, 0.17, 0.2); st.border_color = Color(0.55, 0.65, 1.0) if on else Color(0.34, 0.35, 0.4)
+			squares[k].add_theme_stylebox_override("panel", st)
+	var set_level := func(l: int):
+		if l == Settings.graphics: return
+		Settings.graphics = l; paint.call(); Settings.save_cfg()
+	for k in 10:
+		var sq := Panel.new(); sq.custom_minimum_size = Vector2(0, 40 if _mobile else 30); sq.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sq.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(sq); squares.append(sq)
+	row.gui_input.connect(func(e: InputEvent):
+		var pressed: bool = (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and e.pressed) or (e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0) or (e is InputEventScreenDrag)
+		if pressed: set_level.call(clampi(int(e.position.x / maxf(row.size.x, 1.0) * 10.0) + 1, 1, 10)))
+	var hint := Label.new(); hint.text = "Low hides far-away things; 10 draws a very long distance."; hint.modulate = Color(1, 1, 1, 0.5); hint.add_theme_font_size_override("font_size", 13); parent.add_child(hint)
+	paint.call()
+
 func _check(parent: Node, text: String, val: bool, cb: Callable) -> void:
 	var c := CheckButton.new(); c.text = text; c.button_pressed = val; c.custom_minimum_size = Vector2(0, 46)
 	c.toggled.connect(func(on): cb.call(on); Settings.save_cfg(); Settings.changed.emit()); parent.add_child(c)
@@ -202,8 +226,7 @@ func _check(parent: Node, text: String, val: bool, cb: Callable) -> void:
 func _settings_page(parent: Node) -> void:
 	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 8); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Settings"] = p
 	_section(p, "Graphics")
-	var o := OptionButton.new(); for q in ["Low", "Medium", "High"]: o.add_item("Graphics quality: " + q)
-	o.selected = Settings.quality; o.custom_minimum_size = Vector2(0, 46); o.item_selected.connect(func(i): Settings.quality = i; Settings.save_cfg(); Settings.changed.emit()); p.add_child(o)
+	_graphics_bar(p)
 	if not _mobile: _check(p, "Fullscreen", Settings.fullscreen, func(on): Settings.fullscreen = on; Settings.apply_window())
 	_check(p, "Show player names", Settings.show_names, func(on): Settings.show_names = on)
 	_section(p, "Audio")
