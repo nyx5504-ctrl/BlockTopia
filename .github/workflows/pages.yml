@@ -7,6 +7,8 @@ jobs:
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp version.json (the site shows an update prompt when this changes)
+        run: echo "{\"version\":\"${{ github.sha }}\",\"time\":\"$(date -u +%FT%TZ)\"}" > Website/version.json
       - uses: actions/upload-pages-artifact@v3
         with: { path: Website }
       - id: d
