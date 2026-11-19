@@ -11,6 +11,8 @@ import { initFriends, startFriends, renderFriends, stopListeners } from "./frien
 import { initAlerts, startAlerts, renderAlerts, renderBadges } from "./alerts.js";
 import { initSettings, renderCustomize, showSection, renderAccount, renderSecurity, renderBlocks, applyTheme, stopSettings } from "./settings.js";
 import { CONFIG } from "./config.js";
+import { ensureVerified } from "./verify.js";
+import { startUpdateWatcher } from "./updates.js";
 import { registerDevice, startHeartbeat, stopHeartbeat, watchSelf } from "./devices.js";
 
 const ROUTES = ["home", "friends", "alerts", "customize", "settings"];
@@ -79,6 +81,7 @@ async function loadProfile(u) {
 }
 
 async function enter(u) {
+  if (!(await ensureVerified(u))) return;      // email must be verified (within 35 s of sending the link)
   S.user = u;
   S.profile = await loadProfile(u);
   if (S.profile.theme) applyTheme(S.profile.theme);
@@ -121,6 +124,7 @@ async function main() {
   $("#getApp").onclick = showDownloads;
   $("#resend").onclick = () => A.sendEmailVerification(auth.currentUser).then(() => toast(t("sent_ok")), e => toast(t(errKey(e)), "bad"));
 
+  startUpdateWatcher();
   A.onAuthStateChanged(auth, async u => {
     if (S.signingUp) return;
     if (u) await enter(u); else leave();

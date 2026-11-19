@@ -50,6 +50,13 @@
 <!-- ============ LOG IN / SIGN UP ============ -->
 <main id="auth" class="auth" hidden>
   <button class="lang-fab" id="authLang" type="button" data-i18n-aria-label="lang_title"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span id="authLangName">English</span></button>
+  <aside class="auth-hero">
+    <div class="hero-brand"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg><span>BlockTopia</span></div>
+    <h2 data-i18n="hero_title">Your world. Your friends. Your rules.</h2>
+    <p data-i18n="hero_sub">Jump into BASEPLATE, customize your character and play together.</p>
+    <ul class="hero-list"><li data-i18n="hero_f1">Play with friends in real time</li><li data-i18n="hero_f2">Make your character truly yours</li><li data-i18n="hero_f3">Safe chat, filtered for everyone</li></ul>
+    <div class="hero-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  </aside>
   <section class="card auth-card">
     <div class="auth-brand">
       <svg class="logo logo-lg" aria-hidden="true"><use href="#logo"/></svg>
@@ -305,6 +312,29 @@
     <p class="linkcode" id="linkCode">—</p>
     <p class="err" id="linkErr" role="alert"></p>
     <div style="display:flex;gap:10px;margin-top:14px"><button class="btn primary" id="linkOk" type="button" data-i18n="link_approve">Yes, sign me in</button><button class="btn ghost" type="button" data-close data-i18n="cancel">Cancel</button></div>
+  </div>
+</div>
+
+<!-- ============ VERIFY EMAIL (35 s) ============ -->
+<div class="overlay" id="verifyOverlay" hidden>
+  <div class="ov-card" role="dialog" aria-modal="true" aria-labelledby="vfTitle">
+    <div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="bg" cx="60" cy="60" r="52"/><circle class="fg" id="vfRing" cx="60" cy="60" r="52"/></svg><div class="ring-num" id="vfNum">35</div></div>
+    <h2 id="vfTitle" data-i18n="vf_title">Verify your email</h2>
+    <p data-i18n="vf_text">We sent you a link. Open it within 35 seconds, or it expires.</p>
+    <p class="vf-mail" id="vfMail"></p>
+    <p class="vf-state" id="vfState" role="status"></p>
+    <div class="ov-actions"><button class="btn primary" id="vfResend" type="button" hidden data-i18n="vf_resend">Send a new link</button><button class="btn ghost" id="vfBack" type="button" data-i18n="back_login">Back to log in</button></div>
+  </div>
+</div>
+
+<!-- ============ UPDATE AVAILABLE ============ -->
+<div class="overlay" id="updateOverlay" hidden>
+  <div class="ov-card" role="dialog" aria-modal="true" aria-labelledby="updTitle">
+    <div class="upd-ic"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></div>
+    <h2 id="updTitle" data-i18n="upd_title">BlockTopia has an update to share with you</h2>
+    <p data-i18n="upd_text">Would you like to see it?</p>
+    <div class="ov-actions"><button class="btn primary" id="updYes" type="button" data-i18n="upd_yes">Yes</button><button class="btn ghost" id="updLater" type="button" data-i18n="upd_later">Later (1 hour)</button></div>
+    <p class="upd-note" data-i18n="upd_note">If you wait, BlockTopia updates by itself after 1 hour.</p>
   </div>
 </div>
 
