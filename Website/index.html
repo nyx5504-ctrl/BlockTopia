@@ -218,6 +218,13 @@
           <div>
             <!-- Account -->
             <div class="panel" data-panel="account">
+              <div class="card" style="margin-bottom:16px">
+                <div class="srow" style="flex-direction:column;align-items:stretch;gap:8px"><span class="lbl" data-i18n="desc_label">Description</span>
+                  <textarea id="descInput" rows="3" maxlength="150" style="width:100%;resize:vertical;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--raised);color:inherit;font:inherit" data-i18n-placeholder="desc_ph" placeholder="Tell friends about yourself"></textarea>
+                  <small class="hint" data-i18n="desc_hint">Friends see this on your profile in the app. Up to 150 characters.</small>
+                  <p class="err" id="descErr" role="alert"></p>
+                  <div><button class="btn primary sm" id="descSave" type="button" data-i18n="desc_save">Save description</button></div></div>
+              </div>
               <div class="card">
                 <div class="srow"><div style="display:flex;align-items:center;gap:14px"><span class="av lg" id="setAv">?</span><div><div class="lbl" id="setName"></div><div class="sub" style="color:var(--faint);font-size:13px" data-i18n="username_note">Usernames can't be changed.</div></div></div></div>
                 <div class="srow"><span class="lbl" data-i18n="username_label">Username</span><span class="val" id="setUser"></span></div>

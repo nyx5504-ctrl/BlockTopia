@@ -118,6 +118,7 @@ export function renderAccount() {
   $("#setEmail").textContent = u.email || "";
   $("#setVerified").textContent = t(u.emailVerified ? "verified" : "unverified");
   $("#resend2").hidden = u.emailVerified;
+  $("#descInput").value = S.profile?.description || "";
   $("#pwOpen").closest(".srow").hidden = !u.providerData.some(x => x.providerId === "password");   // Google-only accounts have no password to change
   $("#selReq").value = p.allowRequests === "none" ? "none" : "everyone";
   $("#selJoin").value = p.allowJoin === "nobody" ? "nobody" : "friends";
@@ -229,6 +230,16 @@ export function initSettings() {
     b.onclick = async () => { applyTheme(b.dataset.themePick); if (await save({ theme: b.dataset.themePick })) toast(t("saved")); };
   });
   // devices
+  $("#descSave").addEventListener("click", async () => {      // saved through the server so the description is filtered like chat
+    const btn = $("#descSave"); $("#descErr").textContent = ""; busy(btn, true, t("busy"));
+    try {
+      const r = await fetch((CONFIG.BACKEND_URL || "").replace(/\/+$/, "") + "/profile", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + await auth.currentUser.getIdToken() }, body: JSON.stringify({ description: $("#descInput").value }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { $("#descErr").textContent = data.error || t("err_generic"); return; }
+      S.profile.description = data.profile?.description || ""; toast(t("desc_saved"));
+    } catch { $("#descErr").textContent = t("err_generic"); }
+    finally { busy(btn, false); }
+  });
   $("#blockList").addEventListener("click", async e => {
     const b = e.target.closest("[data-unblock]"); if (!b) return;
     try { await F.deleteDoc(F.doc(db, "blocks", S.user.uid, "list", b.dataset.unblock)); blocks = blocks.filter(x => x.id !== b.dataset.unblock); renderBlocks(); toast(t("unblocked_ok")); }
