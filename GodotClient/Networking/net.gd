@@ -20,6 +20,8 @@ signal report_done(duplicate: bool)
 signal friend_result(ok: bool, text: String)
 signal friend_request(id: int, pname: String)
 
+var bytes_sent := 0         # total bytes written / read on the game socket (the Performance bar shows KB/s)
+var bytes_recv := 0
 var ping_ms := -1            # round-trip time to the server, measured every few seconds
 var _ping_at := 0.0
 
@@ -67,7 +69,8 @@ func _process(_d: float) -> void:
 				_auth_sent = true
 				_send({"t": "auth", "session": session} if session != "" else {"t": "auth", "code": code})
 			while ws.get_available_packet_count() > 0:
-				_handle(ws.get_packet().get_string_from_utf8())
+				var pkt := ws.get_packet(); bytes_recv += pkt.size() + 6
+				_handle(pkt.get_string_from_utf8())
 		WebSocketPeer.STATE_CONNECTING:
 			if Time.get_ticks_msec() / 1000.0 - _t0 > 12.0: ws.close(); _closed("Connection timed out.")
 		WebSocketPeer.STATE_CLOSED:
@@ -88,7 +91,8 @@ func _closed(reason: String) -> void:
 	reconnecting.emit(_attempt)
 
 func _send(d: Dictionary) -> void:
-	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN: ws.send_text(JSON.stringify(d))
+	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		var txt := JSON.stringify(d); bytes_sent += txt.length() + 6; ws.send_text(txt)
 
 func _handle(txt: String) -> void:
 	var m = JSON.parse_string(txt)

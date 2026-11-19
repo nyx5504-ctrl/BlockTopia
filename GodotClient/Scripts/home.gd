@@ -29,6 +29,7 @@ var _remember_check: CheckBox
 var _report_edit: TextEdit
 var _report_reason: OptionButton
 var _auth_mode := "login"
+var _google_poll := 0   # bumped to cancel a running "Continue with Google" wait
 var _screen := "auth"
 var _busy := false
 var _id_token := ""
@@ -48,6 +49,17 @@ var _settings_section := "account"
 var _settings_gen := 0
 var _account_info: Dictionary = {}      # Firebase accounts:lookup (email, verified, created, last sign-in)
 var _device_registered := false
+var _friends_gen := 0
+var _friend_layer: Control           # slide-in friend profile (with chat) while open
+var _friend_uid := ""
+var _chat_box: VBoxContainer
+var _chat_scroll: ScrollContainer
+var _chat_input: LineEdit
+var _chat_status: Label
+var _chat_timer: Timer
+var _chat_sig := ""
+var _chat_sending := false
+var _heartbeat: Timer
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -141,6 +153,7 @@ func _sync_navigation() -> void:
 		_side_user.visible = is_desktop and _profile.has("username")
 
 func _clear() -> void:
+	_close_friend_panel(false)
 	_content_tabs = null; _top_logout = null
 	for node in _col.get_children():
 		_col.remove_child(node); node.queue_free()
@@ -197,6 +210,7 @@ func _add_tabs(detail := false) -> void:
 		game.add_theme_stylebox_override("normal", tab_style); row.add_child(game)
 
 func _show_auth(message := "") -> void:
+	_google_poll += 1
 	_screen = "auth"; _show_auth_shell(); _clear()
 	var logo := TextureRect.new(); logo.texture = load("res://Assets/logo.png"); logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; logo.custom_minimum_size = Vector2(64, 64); logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; _col.add_child(logo)
@@ -214,6 +228,8 @@ func _show_auth(message := "") -> void:
 		b.add_theme_stylebox_override("pressed", ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10))
 		b.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
 		b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
+	_add_button("Continue with Google", _google_login)
+	var or_label := _add_text("or", 14, true); or_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if _auth_mode == "signup":
 		_add_text("Username", 15, true)
 		_username = _add_field("3–20 letters, numbers or underscores")
@@ -230,6 +246,50 @@ func _show_auth(message := "") -> void:
 		_add_button("Forgot password?", _send_password_reset)
 	_status = _add_text(message, 15, true); _status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_fit()
+
+func _google_login() -> void:
+	## Opens the website to sign in with Google; the website approves a short code and this app collects the session (see Backend /auth/device/*).
+	if _busy: return
+	_busy = true; _status.text = "Contacting BlockTopia…"
+	var start := await _request_json(BACKEND_URL + "/auth/device/start", {})
+	if not start.ok:
+		_busy = false; _status.text = "Couldn't start Google sign-in. Check your connection and try again."; return
+	var code := str(start.data.get("code", "")); var secret := str(start.data.get("secret", "")); var user_code := str(start.data.get("userCode", ""))
+	if code == "" or secret == "":
+		_busy = false; _status.text = "Couldn't start Google sign-in. Try again."; return
+	_google_poll += 1; var my_poll := _google_poll
+	OS.shell_open(Settings.WEBSITE_URL + "?link=" + code)
+	_status.text = "Finish signing in with Google in your browser.\nCheck that the code there is %s." % user_code
+	_busy = false
+	var deadline := Time.get_ticks_msec() + 300000
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(2.0).timeout
+		if my_poll != _google_poll or _screen != "auth" or not is_inside_tree(): return
+		var poll := await _request_json(BACKEND_URL + "/auth/device/poll", {"secret": secret})
+		if my_poll != _google_poll or _screen != "auth": return
+		if poll.code == 404: break
+		if poll.ok and str(poll.data.get("status", "")) == "ok":
+			await _finish_google_login(str(poll.data.get("customToken", "")))
+			return
+	if my_poll == _google_poll and _screen == "auth":
+		_status.text = "Google sign-in timed out. Try again."
+
+func _finish_google_login(custom_token: String) -> void:
+	if _busy or custom_token == "": return
+	_busy = true; _status.text = "Signing in…"
+	var exchange := await _request_json(AUTH_URL + "signInWithCustomToken?key=" + FIREBASE_API_KEY, {"token": custom_token, "returnSecureToken": true})
+	if not exchange.ok:
+		_busy = false; _status.text = _auth_error(exchange.data); return
+	_store_tokens(exchange.data, true)
+	_status.text = "Loading your dashboard…"
+	var profile_result := await _api("profile", {})
+	_busy = false
+	if not profile_result.ok:
+		_status.text = profile_result.error if profile_result.error != "" else "Couldn't load your profile. Try again."; return
+	if profile_result.data.get("needsUsername", false):
+		_show_profile_setup(); return
+	_profile = profile_result.data.get("profile", {}); Settings.native_profile = _profile.duplicate(true)
+	_show_dashboard()
 
 func _set_auth_mode(mode: String) -> void:
 	if _busy: return
@@ -377,6 +437,193 @@ func _add_friends_invite() -> void:
 	var caption := Label.new(); caption.text = "Explore BlockTopia together."; caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; caption.modulate = Color(1, 1, 1, 0.68); details.add_child(caption)
 	var add := Button.new(); add.text = "Add people"; add.custom_minimum_size = Vector2(118, 46); add.pressed.connect(_show_friends); row.add_child(add)
 
+# ---------------- friends: strip, slide-in profile, join, chat ----------------
+func _start_heartbeat() -> void:
+	if _heartbeat != null: return
+	_heartbeat = Timer.new(); _heartbeat.wait_time = 100.0; _heartbeat.autostart = true; add_child(_heartbeat); _heartbeat.timeout.connect(_beat)
+	_beat()
+
+func _beat() -> void:      # keeps you "online" for your friends (the website does the same every 2 minutes)
+	if Settings.device_id == "" or _uid() == "": return
+	await _fs(HTTPClient.METHOD_PATCH, "users/%s/devices/%s?updateMask.fieldPaths=lastActive" % [_uid(), Settings.device_id], {"fields": {"lastActive": {"timestampValue": _now_iso()}}})
+
+func _add_friends_strip(with_title := true) -> void:
+	if with_title: _add_text("Friends", 23)
+	var holder := VBoxContainer.new(); holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _col.add_child(holder)
+	_friends_gen += 1
+	_friends_loop(holder, _friends_gen)
+
+func _friends_loop(holder: VBoxContainer, gen: int) -> void:
+	while gen == _friends_gen and is_instance_valid(holder) and _screen in ["dashboard", "friends"]:
+		var res := await _api("friends", {})
+		if gen != _friends_gen or not is_instance_valid(holder): return
+		for c in holder.get_children(): c.queue_free()
+		var list: Array = res.data.get("friends", []) if res.ok else []
+		if not res.ok:
+			var note := Label.new(); note.text = "Couldn't load your friends right now."; note.modulate = Color(1, 1, 1, 0.6); holder.add_child(note)
+		else:
+			_fill_friend_strip(holder, list)
+		await get_tree().create_timer(30.0).timeout
+
+func _fill_friend_strip(holder: VBoxContainer, list: Array) -> void:
+	var scroll := ScrollContainer.new(); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO; scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, 92); scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL; holder.add_child(scroll)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); scroll.add_child(row)
+	for f in list:
+		if f is Dictionary: row.add_child(_friend_card(f))
+	var add := Button.new(); add.text = "+  Add friends" if not list.is_empty() else "+  Add people to play"; add.custom_minimum_size = Vector2(170, 76); add.focus_mode = Control.FOCUS_NONE
+	add.pressed.connect(_show_friends if _screen != "friends" else _open_website_friends); row.add_child(add)
+
+func _friend_card(f: Dictionary) -> Button:
+	var b := Button.new(); b.custom_minimum_size = Vector2(236, 76); b.focus_mode = Control.FOCUS_NONE
+	var normal := ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)
+	var hover := ThemeBuilder.box(ThemeBuilder.c(Color(0.15, 0.15, 0.18)), ThemeBuilder.c(Color(0.34, 0.34, 0.4)), 14)
+	for st in ["normal", "focus"]: b.add_theme_stylebox_override(st, normal)
+	for st in ["hover", "pressed"]: b.add_theme_stylebox_override(st, hover)
+	var margin := MarginContainer.new(); margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 10)
+	b.add_child(margin)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 12); row.mouse_filter = Control.MOUSE_FILTER_IGNORE; margin.add_child(row)
+	var character: Dictionary = _normalize_character(f.get("character", {}))
+	row.add_child(FriendFace.new().setup(character, bool(f.get("online", false)), 52))
+	var col := VBoxContainer.new(); col.alignment = BoxContainer.ALIGNMENT_CENTER; col.mouse_filter = Control.MOUSE_FILTER_IGNORE; col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(col)
+	var name := Label.new(); name.text = str(f.get("username", "Player")); name.add_theme_font_size_override("font_size", 17); name.clip_text = true; name.mouse_filter = Control.MOUSE_FILTER_IGNORE; col.add_child(name)
+	var sub := Label.new(); sub.mouse_filter = Control.MOUSE_FILTER_IGNORE; sub.add_theme_font_size_override("font_size", 14)
+	if bool(f.get("inGame", false)): sub.text = "In game"; sub.add_theme_color_override("font_color", Color(0.4, 0.88, 0.52))
+	else: sub.text = "View friend"; sub.modulate = Color(1, 1, 1, 0.6)
+	col.add_child(sub)
+	b.pressed.connect(_open_friend.bind(f))
+	return b
+
+func _close_friend_panel(animate := true) -> void:
+	if _chat_timer != null: _chat_timer.queue_free(); _chat_timer = null
+	_friend_uid = ""; _chat_box = null; _chat_scroll = null; _chat_input = null; _chat_status = null; _chat_sig = ""
+	if _friend_layer == null or not is_instance_valid(_friend_layer): _friend_layer = null; return
+	var layer := _friend_layer; _friend_layer = null
+	var panel: Control = layer.get_node_or_null("Panel")
+	if animate and panel != null:
+		var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(panel, "offset_left", panel.offset_left - panel.size.x, 0.18); tw.parallel().tween_property(panel, "offset_right", panel.offset_right - panel.size.x, 0.18)
+		tw.tween_callback(layer.queue_free)
+	else: layer.queue_free()
+
+func _open_friend(f: Dictionary) -> void:
+	_close_friend_panel(false)
+	_friend_uid = str(f.get("uid", ""))
+	var layer := Control.new(); layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(layer); _friend_layer = layer
+	var scrim := ColorRect.new(); scrim.color = Color(0, 0, 0, 0.4); scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scrim.gui_input.connect(func(e: InputEvent): if e is InputEventMouseButton and e.pressed: _close_friend_panel()); layer.add_child(scrim)
+	var w := minf(370.0, get_viewport_rect().size.x)
+	var panel := PanelContainer.new(); panel.name = "Panel"; panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	panel.offset_left = -w; panel.offset_right = 0.0
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.085, 0.085, 0.1)), ThemeBuilder.c(Color(0.22, 0.22, 0.26)), 0)); layer.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 16)
+	panel.add_child(margin)
+	var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 10); margin.add_child(stack)
+	var head := HBoxContainer.new(); stack.add_child(head)
+	var title := Label.new(); title.text = "Friend"; title.add_theme_font_size_override("font_size", 18); title.modulate = Color(1, 1, 1, 0.7); title.size_flags_horizontal = Control.SIZE_EXPAND_FILL; head.add_child(title)
+	var close := Button.new(); close.text = "✕"; close.custom_minimum_size = Vector2(40, 36); close.focus_mode = Control.FOCUS_NONE; close.pressed.connect(_close_friend_panel); head.add_child(close)
+	var character: Dictionary = _normalize_character(f.get("character", {}))
+	_make_avatar_preview(stack, character, Vector2(0, 210), str(f.get("username", "Player")), str(f.get("avatarColor", "#2f6fd6")))
+	var name := Label.new(); name.text = str(f.get("username", "Player")); name.add_theme_font_size_override("font_size", 26); name.clip_text = true; stack.add_child(name)
+	var state := Label.new(); state.add_theme_font_size_override("font_size", 14)
+	if bool(f.get("inGame", false)): state.text = "● In game"; state.add_theme_color_override("font_color", Color(0.4, 0.88, 0.52))
+	elif bool(f.get("online", false)): state.text = "● Online"; state.add_theme_color_override("font_color", Color(0.4, 0.88, 0.52))
+	else: state.text = "Offline"; state.modulate = Color(1, 1, 1, 0.55)
+	stack.add_child(state)
+	var desc_text := str(f.get("description", "")).strip_edges()
+	var desc := Label.new(); desc.text = desc_text if desc_text != "" else "No description yet."; desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; desc.modulate = Color(1, 1, 1, 0.8 if desc_text != "" else 0.45); stack.add_child(desc)
+	var join_status := Label.new(); join_status.modulate = Color(1, 1, 1, 0.7); join_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if bool(f.get("inGame", false)) and bool(f.get("joinable", false)):
+		var join := Button.new(); join.text = "Join game"; join.custom_minimum_size = Vector2(0, 46); join.pressed.connect(_join_friend.bind(str(f.get("uid", "")), join_status)); stack.add_child(join)
+	elif bool(f.get("inGame", false)):
+		join_status.text = "This friend isn't accepting joins right now."
+	stack.add_child(join_status)
+	var chat_title := Label.new(); chat_title.text = "Chat"; chat_title.add_theme_font_size_override("font_size", 18); stack.add_child(chat_title)
+	var chat_card := PanelContainer.new(); chat_card.size_flags_vertical = Control.SIZE_EXPAND_FILL; chat_card.custom_minimum_size = Vector2(0, 140)
+	chat_card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.05, 0.05, 0.06)), ThemeBuilder.c(Color(0.2, 0.2, 0.24)), 10)); stack.add_child(chat_card)
+	_chat_scroll = ScrollContainer.new(); _chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; chat_card.add_child(_chat_scroll)
+	_chat_box = VBoxContainer.new(); _chat_box.add_theme_constant_override("separation", 6); _chat_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _chat_scroll.add_child(_chat_box)
+	var send_row := HBoxContainer.new(); send_row.add_theme_constant_override("separation", 8); stack.add_child(send_row)
+	_chat_input = LineEdit.new(); _chat_input.placeholder_text = "Message %s" % str(f.get("username", "friend")); _chat_input.max_length = 150; _chat_input.custom_minimum_size = Vector2(0, 42); _chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_chat_input.text_submitted.connect(func(_t): _chat_send()); send_row.add_child(_chat_input)
+	var send := Button.new(); send.text = "Send"; send.custom_minimum_size = Vector2(76, 42); send.pressed.connect(_chat_send); send_row.add_child(send)
+	_chat_status = Label.new(); _chat_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _chat_status.add_theme_font_size_override("font_size", 13); _chat_status.modulate = Color(1, 0.75, 0.55, 0.95); stack.add_child(_chat_status)
+	_chat_timer = Timer.new(); _chat_timer.wait_time = 3.0; _chat_timer.autostart = true; add_child(_chat_timer); _chat_timer.timeout.connect(_chat_load)
+	_chat_load()
+	var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)     # slides open from the left edge
+	tw.parallel().tween_property(panel, "offset_left", 0.0, 0.24); tw.parallel().tween_property(panel, "offset_right", w, 0.24)
+
+func _join_friend(uid: String, status: Label) -> void:
+	if _busy or uid == "": return
+	_busy = true; status.text = "Joining…"
+	var result := await _api("launch", {"game": "baseplate", "joinUid": uid})
+	_busy = false
+	if not result.ok or not result.data.has("code") or not result.data.has("ws"):
+		if is_instance_valid(status): status.text = result.error if result.error != "" else "Couldn't join. Try again."
+		return
+	Settings.launch = {"game": "baseplate", "code": str(result.data.code), "ws": str(result.data.ws)}
+	Settings.protocol_launched = false
+	get_tree().change_scene_to_file("res://Scenes/Baseplate.tscn")
+
+func _chat_load() -> void:
+	var who := _friend_uid
+	if who == "" or _chat_box == null: return
+	var res := await _api("friend-chat", {"action": "list", "with": who})
+	if who != _friend_uid or _chat_box == null or not is_instance_valid(_chat_box): return
+	if not res.ok:
+		if _chat_status != null and _chat_sig == "": _chat_status.text = res.error
+		return
+	var msgs: Array = res.data.get("messages", [])
+	var ids := []
+	for m in msgs: ids.append(str(m.get("id", "")))
+	var sig := ",".join(PackedStringArray(ids))
+	if sig == _chat_sig: return
+	_chat_sig = sig
+	for c in _chat_box.get_children(): c.queue_free()
+	if msgs.is_empty():
+		var hint := Label.new(); hint.text = "Say hi!"; hint.modulate = Color(1, 1, 1, 0.45); _chat_box.add_child(hint)
+	for m in msgs: _chat_add_bubble(m)
+	await get_tree().process_frame
+	if _chat_scroll != null and is_instance_valid(_chat_scroll): _chat_scroll.scroll_vertical = int(_chat_scroll.get_v_scroll_bar().max_value)
+
+func _chat_add_bubble(m: Dictionary) -> void:
+	var mine := str(m.get("from", "")) == _uid()
+	var row := HBoxContainer.new(); row.alignment = BoxContainer.ALIGNMENT_END if mine else BoxContainer.ALIGNMENT_BEGIN; _chat_box.add_child(row)
+	var bubble := PanelContainer.new()
+	bubble.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.16, 0.3, 0.55) if mine else Color(0.16, 0.16, 0.19)), ThemeBuilder.c(Color(0.2, 0.2, 0.24)), 10)); row.add_child(bubble)
+	var text := str(m.get("text", ""))
+	var label := Label.new(); label.text = text; label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; label.custom_minimum_size = Vector2(minf(230.0, 9.0 * text.length() + 22.0), 0); bubble.add_child(label)
+
+func _chat_send() -> void:
+	if _chat_input == null or _chat_sending or _friend_uid == "": return
+	var text := _chat_input.text.strip_edges()
+	if text == "": return
+	_chat_sending = true; _chat_status.text = ""
+	var res := await _api("friend-chat", {"action": "send", "with": _friend_uid, "text": text})
+	_chat_sending = false
+	if _chat_input == null or not is_instance_valid(_chat_input): return
+	if not res.ok:
+		_chat_status.text = res.error if res.error != "" else "Couldn't send that message."; return
+	_chat_input.text = ""
+	if bool(res.data.get("masked", false)): _chat_status.text = "Some words were hidden. Let's keep BlockTopia friendly!"
+	_chat_sig = ""; _chat_load()
+
+func _save_description(edit: LineEdit, status: Label, button: Button) -> void:
+	if _busy: return
+	_busy = true; button.disabled = true; status.text = "Saving…"
+	var res := await _api("profile", {"description": edit.text})
+	_busy = false
+	if is_instance_valid(button): button.disabled = false
+	if not is_instance_valid(status): return
+	if not res.ok:
+		status.text = res.error if res.error != "" else "Couldn't save your description."; return
+	var saved: Variant = res.data.get("profile", {})
+	_profile["description"] = str(saved.get("description", "")) if saved is Dictionary else edit.text
+	Settings.native_profile = _profile.duplicate(true)
+	status.text = "Saved."
+
 func _show_friends() -> void:
 	_hide_auth_shell()
 	_screen = "friends"; _clear()
@@ -385,6 +632,7 @@ func _show_friends() -> void:
 	_add_tabs(false)
 	_add_text("Friends", 26)
 	_add_text("Add people to play and explore BlockTopia together.", 15, true)
+	_add_friends_strip(false)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); _col.add_child(card)
 	var body := VBoxContainer.new(); body.add_theme_constant_override("separation", 10); card.add_child(body)
@@ -536,6 +784,12 @@ func _build_account(body: Node) -> void:
 	if not verified:
 		var resend := _settings_button(card, "Resend verification email", Callable())
 		resend.pressed.connect(_resend_verification.bind(resend, verify_state))
+	var about := _settings_card(body, "Description")
+	_settings_note(about, "Friends see this on your profile. Up to 150 characters, kept friendly like chat.")
+	var desc_edit := _settings_field(about, "Write something about yourself"); desc_edit.max_length = 150; desc_edit.text = str(_profile.get("description", ""))
+	var desc_status := _settings_note(about, "")
+	var desc_save := _settings_button(about, "Save description", Callable())
+	desc_save.pressed.connect(_save_description.bind(desc_edit, desc_status, desc_save))
 	var password := _settings_card(body, "Password")
 	var open := _settings_button(password, "Change password", Callable())
 	var form := VBoxContainer.new(); form.visible = false; form.add_theme_constant_override("separation", 8); password.add_child(form)
@@ -774,11 +1028,12 @@ func _show_dashboard() -> void:
 	_screen = "dashboard"; _clear()
 	if not _device_registered: _device_registered = true; _register_device()
 	if not _prefs_synced: _prefs_synced = true; _sync_prefs()
+	_start_heartbeat()
 	_add_app_header()
 	_add_update_banner()
 	_add_tabs(false)
 	_add_text("Welcome, %s" % str(_profile.get("username", "player")), 20)
-	_add_friends_invite()
+	_add_friends_strip()
 	_add_text("Featured", 23)
 	var card := PanelContainer.new(); card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)); _col.add_child(card)
 	var wide := get_viewport().get_visible_rect().size.x >= 720.0
@@ -804,7 +1059,9 @@ func _show_dashboard() -> void:
 	_fit()
 
 func _character_data() -> Dictionary:
-	var value: Variant = _profile.get("character", {})
+	return _normalize_character(_profile.get("character", {}))
+
+func _normalize_character(value: Variant) -> Dictionary:
 	var c: Dictionary = value if value is Dictionary else {}
 	var body_type := str(c.get("bodyType", "classic"))
 	if not body_type in ["classic", "slim", "broad"]: body_type = "classic"
@@ -824,14 +1081,14 @@ func _character_data() -> Dictionary:
 		defaults[part].color = color if color.begins_with("#") and color.length() == 7 else defaults[part].color
 	return {"height": clampf(float(c.get("height", 1.0)), 0.75, 1.25), "bodyType": body_type, "bodyColor": defaults["head"]["color"], "parts": defaults}
 
-func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0, 210)) -> Avatar:
+func _make_avatar_preview(parent: Node, character: Dictionary, size := Vector2(0, 210), display_name := "", shirt_hex := "") -> Avatar:
 	var holder := SubViewportContainer.new(); holder.stretch = true; holder.custom_minimum_size = size
 	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(holder)
 	var view := SubViewport.new(); view.size = Vector2i(360, 220); view.transparent_bg = true; view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.world_3d = World3D.new(); holder.add_child(view)
 	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-35, -25, 0); view.add_child(light)
 	var camera := Camera3D.new(); camera.position = Vector3(0, 1.45, 3.8); camera.look_at(Vector3(0, 1.3, 0), Vector3.UP); camera.current = true; view.add_child(camera)
-	var preview := Avatar.new(); preview.setup(str(_profile.get("username", "Player")), Color(str(_profile.get("avatarColor", "#2f6fd6"))), character, false); view.add_child(preview)
+	var preview := Avatar.new(); preview.setup(display_name if display_name != "" else str(_profile.get("username", "Player")), Color(shirt_hex if shirt_hex != "" else str(_profile.get("avatarColor", "#2f6fd6"))), character, false); view.add_child(preview)
 	return preview
 
 func _add_character_customizer(parent: Node) -> void:
@@ -995,6 +1252,8 @@ func _sign_out() -> void:
 
 func _clear_native_session() -> void:
 	_id_token = ""; _refresh_token = ""; _token_expiry = 0; _profile = {}; _reaction = ""; _report_open = false; _account_info = {}; _device_registered = false
+	if _heartbeat != null: _heartbeat.queue_free(); _heartbeat = null
+	_friends_gen += 1
 	Settings.clear_native_session()
 
 func _store_tokens(data: Dictionary, remember := true) -> void:

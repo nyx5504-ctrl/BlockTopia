@@ -6,8 +6,10 @@ extends Node
 ##  - recording forces fullscreen; leaving fullscreen, closing the app or pressing F12 again ends it;
 ##  - the video is saved as Downloads/BlockTopia Videos/BlockTopia_<date>_<time>.avi (Motion-JPEG + PCM sound, plays in VLC, Windows Media Player etc.).
 const FPS := 30
+const MIN_FPS := 12           # when the game struggles, the recorder captures less often (the video repeats frames to keep the timing)
+const CAPTURE_BUDGET := 0.12  # share of each second the main thread may spend copying frames
 const MAX_W := 1280
-const JPG_Q := 0.75
+const JPG_Q := 0.7
 const MAX_SECONDS := 600.0
 const BORDER := 6
 const START_DELAY := 0.9      # lets the "recording started" note disappear and fullscreen settle before the first frame
@@ -32,6 +34,8 @@ var _w: AviWriter
 var _path := ""
 var _test := false
 var _test_t := 0.0
+var _next_cap := 0.0
+var _gap := 1.0 / 30.0       # adaptive time between captures
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -81,11 +85,11 @@ func start() -> void:
 	_path = dir.path_join("BlockTopia_%04d-%02d-%02d_%02d-%02d-%02d.avi" % [d.year, d.month, d.day, d.hour, d.minute, d.second])
 	if not _is_fullscreen():
 		Settings.fullscreen = true; Settings.apply_window()
-	recording = true; _outline.visible = true; _play_btn.visible = false; _issued = 0; _size = Vector2i.ZERO; _audio_acc = PackedVector2Array(); _w = null; _queue.clear()
+	recording = true; _outline.visible = true; _play_btn.visible = false; _issued = 0; _size = Vector2i.ZERO; _audio_acc = PackedVector2Array(); _w = null; _queue.clear(); _next_cap = 0.0; _gap = 1.0 / float(FPS)
 	_cap = AudioEffectCapture.new(); _cap.buffer_length = 1.0; AudioServer.add_bus_effect(0, _cap)
 	_t0 = Time.get_ticks_msec() / 1000.0 + START_DELAY
 	_say("Recording started. Press F12 to stop.", START_DELAY)
-	_thread = Thread.new(); _thread.start(_worker)
+	_thread = Thread.new(); _thread.start(_worker, Thread.PRIORITY_LOW)
 
 func stop(silent := false) -> void:
 	if not recording: return
@@ -137,22 +141,21 @@ func _process(delta: float) -> void:
 	var el := now - _t0
 	if el > MAX_SECONDS: stop(); _say("Recording stopped after 10 minutes. Saved.", 4.0); return
 	var due := int(floor(el * FPS)) - _issued
-	if due <= 0: return
+	if due <= 0 or now < _next_cap: return
 	_mutex.lock(); var backlog := _queue.size(); _mutex.unlock()
-	if backlog > 6: return          # encoder is behind: skip, the next frame repeats for the missing time
-	var img := get_viewport().get_texture().get_image()
+	if backlog > 3: _gap = minf(_gap * 1.5, 1.0 / float(MIN_FPS)); _next_cap = now + _gap; return      # encoder is behind: skip, the next frame repeats for the missing time
+	var t0 := Time.get_ticks_usec()
+	var img := get_viewport().get_texture().get_image()      # the only work done on the game thread; resizing and encoding happen on the worker
 	if img == null or img.is_empty(): return
-	if img.get_format() != Image.FORMAT_RGB8: img.convert(Image.FORMAT_RGB8)
-	var b := BORDER + 2; var w := img.get_width(); var h := img.get_height()
-	if w > b * 4 and h > b * 4:                       # paint over the red outline with the pixels just inside it, so the video has no outline
-		img.blit_rect(img, Rect2i(0, b, w, b), Vector2i(0, 0)); img.blit_rect(img, Rect2i(0, h - 2 * b, w, b), Vector2i(0, h - b))
-		img.blit_rect(img, Rect2i(b, 0, b, h), Vector2i(0, 0)); img.blit_rect(img, Rect2i(w - 2 * b, 0, b, h), Vector2i(w - b, 0))
 	if _size == Vector2i.ZERO:
-		var tw := mini(w, MAX_W); var th := int(round(h * float(tw) / w)); _size = Vector2i(tw - tw % 2, th - th % 2)
-	if img.get_size() != _size: img.resize(_size.x, _size.y, Image.INTERPOLATE_BILINEAR)
+		var w0 := img.get_width(); var h0 := img.get_height(); var tw := mini(w0, MAX_W); var th := int(round(h0 * float(tw) / w0)); _size = Vector2i(tw - tw % 2, th - th % 2)
 	_issued += due
 	_mutex.lock(); _queue.append({"img": img, "n": due, "audio": _audio_acc}); _mutex.unlock(); _sem.post()
 	_audio_acc = PackedVector2Array()
+	# Adaptive rate: keep the copy cost under CAPTURE_BUDGET of real time, so the game itself stays smooth on slower PCs.
+	var cost := float(Time.get_ticks_usec() - t0) / 1000000.0
+	_gap = clampf(cost / CAPTURE_BUDGET, 1.0 / float(FPS), 1.0 / float(MIN_FPS))
+	_next_cap = now + _gap
 
 func _worker() -> void:
 	var rate := int(AudioServer.get_mix_rate())
@@ -164,8 +167,15 @@ func _worker() -> void:
 			return
 		if _w == null:
 			_w = AviWriter.new()
-			if not _w.open(_path, job.img.get_width(), job.img.get_height(), FPS, rate): _w = null; continue
-		var jpg: PackedByteArray = job.img.save_jpg_to_buffer(JPG_Q)
+			if not _w.open(_path, _size.x, _size.y, FPS, rate): _w = null; continue
+		var img: Image = job.img
+		if img.get_format() != Image.FORMAT_RGB8: img.convert(Image.FORMAT_RGB8)
+		var b := BORDER + 2; var iw := img.get_width(); var ih := img.get_height()
+		if iw > b * 4 and ih > b * 4:                       # paint over the red outline with the pixels just inside it, so the video has no outline
+			img.blit_rect(img, Rect2i(0, b, iw, b), Vector2i(0, 0)); img.blit_rect(img, Rect2i(0, ih - 2 * b, iw, b), Vector2i(0, ih - b))
+			img.blit_rect(img, Rect2i(b, 0, b, ih), Vector2i(0, 0)); img.blit_rect(img, Rect2i(iw - 2 * b, 0, b, ih), Vector2i(iw - b, 0))
+		if img.get_size() != _size: img.resize(_size.x, _size.y, Image.INTERPOLATE_BILINEAR)
+		var jpg: PackedByteArray = img.save_jpg_to_buffer(JPG_Q)
 		var pcm := PackedByteArray(); var a: PackedVector2Array = job.audio; pcm.resize(a.size() * 4)
 		for i in a.size():
 			var l := clampi(int(a[i].x * 32767.0), -32768, 32767); var r := clampi(int(a[i].y * 32767.0), -32768, 32767)

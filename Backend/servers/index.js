@@ -13,7 +13,7 @@ const PORT = +process.env.PORT || 8787;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || "AIzaSyCdEvulpM-5MGOTqQhcIrCaeylSMzXtoaA";
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:8000").split(",").map(s => s.trim());
 const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
-const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map(), deviceLinks = new Map(), deviceHits = new Map();
+const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map(), deviceLinks = new Map(), deviceHits = new Map(), dmHits = new Map(), descHits = new Map();
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
 const CHARACTER_PARTS = {
@@ -142,6 +142,30 @@ const server = http.createServer(async (req, res) => {
       return out(500, { error: "Could not load notifications." });
     }
   }
+  if (req.url === "/friends" || req.url === "/friend-chat") {
+    try {
+      const body = await readBody();
+      const tok = (req.headers.authorization || "").replace(/^Bearer /, "");
+      let u; try { u = await verifyToken(tok); } catch { return out(401, { error: "not signed in" }); }
+      if (req.url === "/friends") {
+        await store.touchDevice(u.uid);
+        const list = await store.listFriendsFull(u.uid);
+        return out(200, { friends: list.map(f => ({ uid: f.uid, username: f.user.username || "Player", avatarColor: f.user.avatarColor || "#f4f4f2", description: String(f.user.description || ""), character: normalizeCharacter(f.user.character, f.user.avatarColor), online: f.online, inGame: f.inGame, joinable: f.joinable })).sort((a, b) => (b.online - a.online) || a.username.localeCompare(b.username)) });
+      }
+      const other = String(body.with || "");
+      if (!other || other === u.uid || !(await store.isFriend(u.uid, other))) return out(403, { error: "You can only chat with your friends." });
+      const [theirBlocks, myBlocks] = await Promise.all([store.getBlocks(other), store.getBlocks(u.uid)]);
+      if (theirBlocks.has(u.uid) || myBlocks.has(other)) return out(403, { error: "You can't message this player." });
+      if (body.action === "send") {
+        if (tooMany(dmHits, u.uid, 15, 30000)) return out(429, { error: "You're chatting too fast. Slow down a little." });
+        const v = checkMessage(String(body.text || ""));
+        if (!v.ok) return out(400, { error: FRIENDLY[v.reason] || "Your message wasn't sent.", reason: v.reason });
+        const msg = await store.addDm(u.uid, other, v.text);
+        return out(200, { message: msg, masked: !!v.masked });
+      }
+      return out(200, { messages: await store.listDm(u.uid, other, 50) });
+    } catch (e) { return out(e.status || 400, { error: "bad request" }); }
+  }
   if (req.url === "/profile" || req.url === "/game-feedback") {
     try {
       const body = await readBody();
@@ -160,8 +184,18 @@ const server = http.createServer(async (req, res) => {
           profile = await store.updateProfile(u.uid, { character });
           const live = byUid.get(u.uid); if (live && !live.gone) pushCharacter(live, character);   // already in a game: update everyone's view now
         }
+        if (body.description !== undefined) {
+          const raw = String(body.description || "").replace(/\s+/g, " ").trim().slice(0, 150);
+          if (tooMany(descHits, u.uid, 10, 60000)) return out(429, { error: "Slow down a little and try again." });
+          if (raw) {
+            const v = checkMessage(raw);
+            if (!v.ok) return out(400, { error: FRIENDLY[v.reason] ? FRIENDLY[v.reason].replace("Your message wasn't sent.", "Your description wasn't saved.") : "That description isn't allowed." });
+            if (v.masked) return out(400, { error: "Keep your description friendly. Your description wasn't saved." });
+          }
+          profile = await store.updateProfile(u.uid, { description: raw });
+        }
         if (!profile.username) return out(200, { needsUsername: true });
-        return out(200, { profile: { username: profile.username, avatarColor: profile.avatarColor || "#f4f4f2", character: normalizeCharacter(profile.character, profile.avatarColor) } });
+        return out(200, { profile: { username: profile.username, avatarColor: profile.avatarColor || "#f4f4f2", description: String(profile.description || ""), character: normalizeCharacter(profile.character, profile.avatarColor) } });
       }
       const { game, action } = body;
       if (game !== "baseplate") return out(400, { error: "unknown game" });

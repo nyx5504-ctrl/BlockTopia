@@ -17,7 +17,9 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if authed();
       allow create: if request.auth.uid == uid;
-      allow update: if request.auth.uid == uid && request.resource.data.usernameLower == resource.data.usernameLower;
+      // description is saved by the server (it is filtered there), never straight from a client
+      allow update: if request.auth.uid == uid && request.resource.data.usernameLower == resource.data.usernameLower
+        && request.resource.data.get('description', '') == resource.data.get('description', '');
       // Signed-in devices (Settings > Security). Only the account owner can see or change them.
       match /devices/{deviceId} {
         allow read, write: if authed() && request.auth.uid == uid;

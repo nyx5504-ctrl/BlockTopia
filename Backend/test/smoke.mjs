@@ -87,6 +87,25 @@ try {
   ok(await B.wait(m => m.t === "character" && m.id === wa.id && m.character.parts.head.color === "#c4281c"), "saving on the website updates everyone already in game");
   ok(await A.wait(m => m.t === "character" && m.id === wa.id && m.saved && m.character.bodyType === "slim"), "...including yourself");
 
+  console.log("friends list, descriptions, friend chat");
+  const call = async (path, body, uid) => { const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer dev:${uid}:${uid}` }, body: JSON.stringify(body) }); return { status: r.status, data: await r.json() }; };
+  await call("/profile", { username: "bobby" }, "bob");
+  const fl = await call("/friends", {}, "alice"); const bob = (fl.data.friends || []).find(f => f.uid === "bob");
+  ok(fl.status === 200 && bob && bob.username && bob.character?.parts?.head && bob.online === true && bob.inGame === true, "friends list has bob with his character, online and in game");
+  ok(bob.joinable === true, "bob is joinable");
+  ok((await call("/profile", { description: "I love building!" }, "bob")).data.profile?.description === "I love building!", "description saved");
+  for (const bad of ["email me bob@gmail.com", "you are a f u c k", "send nudes", "kill yourself"]) { const r = await call("/profile", { description: bad }, "bob"); ok(r.status === 400, `description rejected: ${bad}`); }
+  ok((await call("/friends", {}, "alice")).data.friends.find(f => f.uid === "bob").description === "I love building!", "friends see the description");
+  ok((await call("/friend-chat", { action: "send", with: "bob", text: "hi bob" }, "alice")).status === 403, "can't message someone who blocked you");
+  B.send({ t:"block", id: wa.id, on:false }); await sleep(200);
+  ok((await call("/friend-chat", { action: "send", with: "bob", text: "hi bob" }, "alice")).status === 200, "friend chat message sent");
+  ok((await call("/friend-chat", { action: "list", with: "alice" }, "bob")).data.messages.some(m => m.text === "hi bob" && m.from === "alice"), "friend receives it");
+  const masked = await call("/friend-chat", { action: "send", with: "bob", text: "what the f*ck" }, "alice");
+  ok(masked.status === 200 && masked.data.message.text.includes("#") && !masked.data.message.text.includes("f*ck"), "friend chat is filtered like game chat");
+  for (const bad of ["mail me x@y.com", "kill yourself", "dont tell your mom"]) ok((await call("/friend-chat", { action: "send", with: "bob", text: bad }, "alice")).status === 400, `friend chat blocks: ${bad}`);
+  ok((await call("/friend-chat", { action: "send", with: "zed", text: "hello" }, "alice")).status === 403, "only friends can chat");
+  B.send({ t:"block", id: wa.id, on:true }); await sleep(200);
+
   console.log("app sign-in link (Continue with Google in the native app)");
   const post = (path, body, tok) => fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(tok ? { Authorization: "Bearer " + tok } : {}) }, body: JSON.stringify(body) });
   const st = await (await post("/auth/device/start", {})).json();

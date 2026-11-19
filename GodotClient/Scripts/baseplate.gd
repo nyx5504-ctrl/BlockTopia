@@ -65,7 +65,7 @@ func _build_ui() -> void:
 		touch.is_ui = _touch_on_ui
 	hud = CanvasLayer.new(); hud.layer = 8; add_child(hud)
 	if Settings.is_pc():
-		perf = PerfPanel.new(); perf.position = Vector2(12, 66); hud.add_child(perf)
+		perf = PerfPanel.new(); hud.add_child(perf)
 	toast = PanelContainer.new(); toast.set_anchors_preset(Control.PRESET_CENTER_TOP); toast.position = Vector2(-170, 16); toast.custom_minimum_size = Vector2(340, 0); toast.visible = false; toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = Label.new(); toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; toast.add_child(toast_label); hud.add_child(toast)
 	update_notice = Button.new(); update_notice.text = "Update available — tap to download"; update_notice.set_anchors_preset(Control.PRESET_TOP_RIGHT); update_notice.position = Vector2(-342, 18); update_notice.custom_minimum_size = Vector2(324, 46); update_notice.visible = false; update_notice.pressed.connect(func(): OS.shell_open(Settings.update_url)); hud.add_child(update_notice)
@@ -178,9 +178,7 @@ func _exit_game() -> void:
 # ---------------- per-frame ----------------
 func _process(delta: float) -> void:
 	world.animate(delta)
-	if perf != null:       # sits under the menu/chat buttons, and under the chat window while that is open
-		perf.visible = Settings.performance
-		perf.position = Vector2(12, (chat.window.position.y + chat.window.size.y + 8.0) if chat.window.visible else 66.0)
+	if perf != null: perf.visible = Settings.performance      # the bar is anchored along the bottom edge
 	for id in remotes:
 		var r = remotes[id]; var n: Avatar = r.node
 		n.position = n.position.lerp(r.target, 1.0 - exp(-14.0 * delta)); n.rotation.y = lerp_angle(n.rotation.y, r.ry, 1.0 - exp(-14.0 * delta))

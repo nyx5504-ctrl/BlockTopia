@@ -54,7 +54,7 @@ time.sleep(1)
 try:
     with sync_playwright() as p:
         b = p.chromium.launch(); ctx = b.new_context(); page = ctx.new_page()
-        errors, approve = [], {}
+        errors, approve, desc = [], {}, {}
         page.on("pageerror", lambda e: errors.append(str(e)))
         js = lambda body: dict(status=200, content_type="text/javascript", body=body, headers={"access-control-allow-origin": "*"})
         ctx.route("**/*", lambda r: r.abort() if not r.request.url.startswith(f"http://localhost:{PORT}") and "gstatic.com/firebasejs" not in r.request.url and "onrender.com" not in r.request.url else r.fallback())
@@ -67,6 +67,8 @@ try:
             if req.url.endswith("/auth/device/info"): return route.fulfill(status=200, headers=CORS, content_type="application/json", body=json.dumps({"userCode": "K7Q-2MX"}))
             if req.url.endswith("/auth/device/approve"):
                 approve.update(auth=req.headers.get("authorization"), body=req.post_data); return route.fulfill(status=200, headers=CORS, content_type="application/json", body='{"ok":true}')
+            if req.url.endswith("/profile"):
+                desc.update(auth=req.headers.get("authorization"), body=req.post_data); return route.fulfill(status=200, headers=CORS, content_type="application/json", body='{"profile":{"description":"Hi there"}}')
             route.fulfill(status=200, headers=CORS, content_type="application/json", body="{}")
         ctx.route("**onrender.com/**", backend)
 
@@ -93,6 +95,8 @@ try:
         check("blocks/g1/list/u2" not in page.evaluate("[...window.__store.keys()]"), "Unblock removes the block")
         page.evaluate("location.hash='#/settings/account'"); page.wait_for_selector("#setUser")
         check(not page.is_visible("#pwOpen"), "Google-only accounts don't show Change password")
+        page.fill("#descInput", "Hi there"); page.click("#descSave"); page.wait_for_function("document.querySelector('#descSave').disabled === false")
+        check(desc.get("auth") == "Bearer tok-g1" and "Hi there" in (desc.get("body") or ""), "description is saved through the server with the user's token")
         check(not errors, "no page errors: " + "; ".join(errors[:3]))
         b.close()
 finally:

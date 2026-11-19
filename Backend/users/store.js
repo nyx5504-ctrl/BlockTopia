@@ -10,7 +10,7 @@ try {
 if (!db && process.env.DEV_AUTH !== "1") { console.error("No Firebase credentials. Set FIREBASE_SERVICE_ACCOUNT (or DEV_AUTH=1 for local tests)."); process.exit(1); }
 if (!db) console.warn("[dev] running without Firestore: data is kept in memory only");
 
-export const mem = { users: new Map(), friends: new Set(), stats: new Map(), reports: [], presence: new Map(), blocks: new Map(), requests: new Map(), gameReactions: new Map() };
+export const mem = { users: new Map(), friends: new Set(), stats: new Map(), reports: [], presence: new Map(), blocks: new Map(), requests: new Map(), gameReactions: new Map(), dms: new Map(), devices: new Map() };
 const TS = () => admin.firestore.FieldValue.serverTimestamp();
 const INC = n => admin.firestore.FieldValue.increment(n);
 
@@ -172,3 +172,37 @@ export async function declineFriend(from, me) {
   const ref = db.doc(`friendRequests/${from.uid}_${me.uid}`), cur = await ref.get();
   if (cur.exists && cur.data().status === "pending") await ref.update({ status: "rejected" });
 }
+
+// ---------- friends list for the app (profile, online / in-game state) ----------
+const ONLINE_MS = 180000;      // same window the website uses for "active now"
+export async function listFriendsFull(uid) {
+  let ids;
+  if (!db) ids = [...mem.friends].filter(k => k.startsWith(uid + "|")).map(k => k.split("|")[1]);
+  else ids = (await db.collection(`friends/${uid}/list`).limit(100).get()).docs.map(d => d.id);
+  return Promise.all(ids.map(async fid => {
+    const user = await getUser(fid); let pres = null, active = false;
+    if (!db) { pres = mem.presence.get(fid) || null; active = (mem.devices.get(fid) || 0) > Date.now() - ONLINE_MS; }
+    else {
+      const [ps, ds] = await Promise.all([db.doc(`presence/${fid}`).get(), db.collection(`users/${fid}/devices`).get()]);
+      pres = ps.exists ? ps.data() : null;
+      active = ds.docs.some(d => { const x = d.data(); const t = x.lastActive?.toMillis ? x.lastActive.toMillis() : 0; return !x.revoked && t > Date.now() - ONLINE_MS; });
+    }
+    const inGame = !!pres && pres.online !== false;
+    return { uid: fid, user, inGame, online: inGame || active, joinable: inGame && pres.joinable !== false && user.allowJoin !== "nobody" };
+  }));
+}
+
+// ---------- friend chat (server side only, filtered before it is stored) ----------
+const pairId = (a, b) => [a, b].sort().join("_");
+export async function addDm(from, to, text) {
+  const msg = { from, text, at: Date.now() };
+  if (!db) { const k = pairId(from, to), l = mem.dms.get(k) || []; l.push(msg); mem.dms.set(k, l.slice(-200)); return { id: String(l.length), ...msg }; }
+  const ref = await db.collection(`dms/${pairId(from, to)}/messages`).add({ ...msg, createdAt: TS() });
+  return { id: ref.id, ...msg };
+}
+export async function listDm(a, b, limit = 50) {
+  if (!db) return (mem.dms.get(pairId(a, b)) || []).slice(-limit).map((m, i) => ({ id: String(i), ...m }));
+  const snap = await db.collection(`dms/${pairId(a, b)}/messages`).orderBy("at", "desc").limit(limit).get();
+  return snap.docs.map(d => ({ id: d.id, from: d.data().from, text: d.data().text, at: d.data().at })).reverse();
+}
+export async function touchDevice(uid) { if (!db) mem.devices.set(uid, Date.now()); }
