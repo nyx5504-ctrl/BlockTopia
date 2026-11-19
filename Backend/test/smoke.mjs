@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process"; import WebSocket from "ws"; import assert from "node:assert/strict";
 import { checkMessage } from "../chat/filter.js";
 const PORT = 8799, base = `http://localhost:${PORT}`;
-const srv = spawn("node", ["servers/index.js"], { env: { ...process.env, PORT, DEV_AUTH: "1", MAX_PLAYERS: "2", PUBLIC_WS_URL: `ws://localhost:${PORT}` }, stdio: "inherit" });
+const srv = spawn("node", ["servers/index.js"], { env: { ...process.env, PORT, DEV_AUTH: "1", MAX_PLAYERS: "2", VERIFY_WINDOW_MS: "1200", VERIFY_GRACE_MS: "0", PUBLIC_WS_URL: `ws://localhost:${PORT}` }, stdio: "inherit" });
 const sleep = ms => new Promise(r => setTimeout(r, ms)); let pass = 0;
 const ok = (c, name) => { assert.ok(c, name); pass++; console.log("  ok -", name); };
 await sleep(1200);
@@ -105,6 +105,23 @@ try {
   for (const bad of ["mail me x@y.com", "kill yourself", "dont tell your mom"]) ok((await call("/friend-chat", { action: "send", with: "bob", text: bad }, "alice")).status === 400, `friend chat blocks: ${bad}`);
   ok((await call("/friend-chat", { action: "send", with: "zed", text: "hello" }, "alice")).status === 403, "only friends can chat");
   B.send({ t:"block", id: wa.id, on:true }); await sleep(200);
+
+  console.log("email verification window");
+  const vcall = (path, uid) => call(path, {}, uid);
+  ok((await vcall("/verify/check", "vera")).data.status === "none", "unverified account with no window");
+  ok((await vcall("/verify/start", "vera")).data.seconds >= 1, "start opens a window");
+  ok((await vcall("/verify/check", "vera")).data.status === "pending", "pending while inside the window");
+  await vcall("/verify/dev-confirm", "vera");
+  ok((await vcall("/verify/check", "vera")).data.status === "verified", "verified inside the window");
+  ok((await vcall("/verify/check", "vera")).data.status === "verified", "stays verified");
+  await vcall("/verify/start", "vera"); await sleep(1700);
+  ok((await vcall("/verify/check", "vera")).data.status === "expired", "window runs out");
+  await vcall("/verify/dev-confirm", "vera");
+  ok((await vcall("/verify/check", "vera")).data.status === "expired", "clicking the old link afterwards is revoked");
+  ok((await vcall("/verify/check", "vera")).data.status === "none", "back to unverified");
+  await vcall("/verify/start", "vera"); await sleep(1700); await vcall("/verify/dev-confirm", "vera");
+  ok((await vcall("/verify/check", "vera")).data.status === "expired", "verifying after the window is rejected");
+  ok((await fetch(base + "/verify/check", { method: "POST", body: "{}" })).status === 401, "verify needs a signed-in user");
 
   console.log("app sign-in link (Continue with Google in the native app)");
   const post = (path, body, tok) => fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(tok ? { Authorization: "Bearer " + tok } : {}) }, body: JSON.stringify(body) });

@@ -60,11 +60,17 @@ var _chat_timer: Timer
 var _chat_sig := ""
 var _chat_sending := false
 var _heartbeat: Timer
+var _email_ok := false               # this session already passed the email check
+var _verify_back := false
+var _verify_resend := false
+var _update_prompt: Control
+var _update_timer: Timer
+var _update_status: Label
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ThemeBuilder.apply_to(get_tree(), true)
-	_bg = ColorRect.new(); _bg.color = ThemeBuilder.c(Color(0.043, 0.043, 0.047)); _bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_bg)
+	_bg = ColorRect.new(); _bg.color = ThemeBuilder.c(Color(0.035, 0.04, 0.065)); _bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_bg)
 	_scroll = ScrollContainer.new(); _scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; add_child(_scroll)
 	_center = CenterContainer.new(); _center.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _scroll.add_child(_center)
 	_col = VBoxContainer.new(); _col.add_theme_constant_override("separation", 14); _col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _center.add_child(_col)
@@ -77,6 +83,9 @@ func _ready() -> void:
 	_profile = Settings.native_profile.duplicate(true)
 	Settings.app_update_available.connect(_on_app_update_available)
 	Settings.check_for_app_update()
+	Settings.update_failed.connect(_on_update_failed)
+	_update_timer = Timer.new(); _update_timer.wait_time = 30.0; _update_timer.autostart = true; add_child(_update_timer); _update_timer.timeout.connect(_update_tick)
+	var recheck := Timer.new(); recheck.wait_time = 600.0; recheck.autostart = true; add_child(recheck); recheck.timeout.connect(Settings.check_for_app_update)
 	if _refresh_token != "" or _id_token != "":
 		_set_status_screen("Loading your BlockTopia dashboard…")
 		if await _ensure_fresh_token():
@@ -182,9 +191,9 @@ func _add_button(label: String, callback: Callable, primary := false) -> Button:
 	var b := Button.new(); b.text = label; b.custom_minimum_size = Vector2(0, 46); b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.add_theme_font_size_override("font_size", 16)
 	if primary:
-		var style := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.98, 0.98, 0.99)), 10)
-		b.add_theme_stylebox_override("normal", style); b.add_theme_stylebox_override("hover", style); b.add_theme_stylebox_override("pressed", style)
-		b.add_theme_color_override("font_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06))); b.add_theme_color_override("font_hover_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
+		b.add_theme_stylebox_override("normal", ThemeBuilder.accent_box()); b.add_theme_stylebox_override("hover", ThemeBuilder.accent_box(true)); b.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
+		b.add_theme_color_override("font_color", Color(1, 1, 1)); b.add_theme_color_override("font_hover_color", Color(1, 1, 1)); b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
+		b.custom_minimum_size = Vector2(0, 50)
 	b.pressed.connect(callback); _col.add_child(b); return b
 
 func _add_tabs(detail := false) -> void:
@@ -225,8 +234,8 @@ func _show_auth(message := "") -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.toggle_mode = true; b.button_group = mode_group; b.button_pressed = _auth_mode == mode
 		b.add_theme_stylebox_override("normal", ThemeBuilder.box(ThemeBuilder.c(Color(0.12, 0.12, 0.14)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10))
 		b.add_theme_stylebox_override("hover", ThemeBuilder.box(ThemeBuilder.c(Color(0.16, 0.16, 0.18)), ThemeBuilder.c(Color(0.24, 0.24, 0.27)), 10))
-		b.add_theme_stylebox_override("pressed", ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10))
-		b.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
+		b.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
+		b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
 		b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
 	_add_button("Continue with Google", _google_login)
 	var or_label := _add_text("or", 14, true); or_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -322,8 +331,6 @@ func _submit_auth() -> void:
 	if not result.ok:
 		_busy = false; _status.text = _auth_error(result.data); return
 	_store_tokens(result.data, true if is_signup else (_remember_check != null and _remember_check.button_pressed))
-	if is_signup:
-		await _request_json(AUTH_URL + "sendOobCode?key=" + FIREBASE_API_KEY, {"requestType": "VERIFY_EMAIL", "idToken": _id_token})
 	_status.text = "Loading your dashboard…"
 	var profile_result := await _api("profile", {"username": username} if is_signup else {})
 	_busy = false
@@ -389,10 +396,11 @@ func _show_auth_shell() -> void:
 	if _auth_shell != null and is_instance_valid(_auth_shell): return
 	if _col.get_parent() == _center: _center.remove_child(_col)
 	_auth_shell = PanelContainer.new()
-	_auth_shell.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.09, 0.09, 0.105)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 16))
+	var shell_style := ThemeBuilder.box(ThemeBuilder.c(Color(0.075, 0.083, 0.12)), ThemeBuilder.c(Color(0.19, 0.205, 0.29)), 26); shell_style.shadow_color = Color(0.25, 0.3, 0.9, 0.18); shell_style.shadow_size = 40
+	_auth_shell.add_theme_stylebox_override("panel", shell_style)
 	_center.add_child(_auth_shell)
 	_auth_shell_margin = MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]: _auth_shell_margin.add_theme_constant_override("margin_" + side, 22)
+	for side in ["left", "right", "top", "bottom"]: _auth_shell_margin.add_theme_constant_override("margin_" + side, 28)
 	_auth_shell.add_child(_auth_shell_margin); _auth_shell_margin.add_child(_col)
 
 func _hide_auth_shell() -> void:
@@ -415,13 +423,151 @@ func _add_app_header() -> void:
 func _add_update_banner() -> void:
 	if not Settings.update_available or (_update_notice != null and is_instance_valid(_update_notice)): return
 	_update_notice = PanelContainer.new(); _update_notice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.11, 0.16, 0.25)), ThemeBuilder.c(Color(0.24, 0.42, 0.7)), 12)); _col.add_child(_update_notice)
+	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.13, 0.26), ThemeBuilder.ACCENT, 14)); _col.add_child(_update_notice)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); _update_notice.add_child(row)
 	var note := Label.new(); note.text = "Update %s is available. Download and install it, then reopen BlockTopia." % Settings.update_version; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(note)
 	var get_update := Button.new(); get_update.text = "Download"; get_update.custom_minimum_size = Vector2(100, 44); get_update.pressed.connect(_open_update_download); row.add_child(get_update)
 
 func _on_app_update_available(_version: String) -> void:
 	if _screen in ["dashboard", "details", "customization", "friends", "notifications", "settings"]: _add_update_banner()
+	_consider_update_prompt()
+
+# ---------------- email verification pop-up (35 seconds) ----------------
+class VerifyRing extends Control:
+	var progress := 1.0
+	func _draw() -> void:
+		var c := size * 0.5; var r := minf(size.x, size.y) * 0.5 - 7.0
+		draw_arc(c, r, 0.0, TAU, 72, Color(1, 1, 1, 0.1), 9.0, true)
+		if progress > 0.0: draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * progress, 72, ThemeBuilder.ACCENT, 9.0, true)
+
+func _overlay_card(width := 400.0) -> Dictionary:
+	var layer := Control.new(); layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.mouse_filter = Control.MOUSE_FILTER_STOP; add_child(layer)
+	var dim := ColorRect.new(); dim.color = Color(0.02, 0.02, 0.05, 0.8); dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.add_child(dim)
+	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.add_child(center)
+	var card := PanelContainer.new(); card.custom_minimum_size = Vector2(minf(width, get_viewport_rect().size.x - 32.0), 0)
+	var sb := ThemeBuilder.box(Color(0.07, 0.078, 0.11), Color(0.2, 0.22, 0.3), 24)
+	sb.shadow_color = Color(0, 0, 0, 0.5); sb.shadow_size = 30; sb.content_margin_left = 26; sb.content_margin_right = 26; sb.content_margin_top = 28; sb.content_margin_bottom = 24
+	card.add_theme_stylebox_override("panel", sb); center.add_child(card)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 12); card.add_child(box)
+	return {"layer": layer, "box": box}
+
+func _centered_label(parent: Node, text: String, size: int, muted := false) -> Label:
+	var l := Label.new(); l.text = text; l.add_theme_font_size_override("font_size", size); l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if muted: l.modulate = Color(1, 1, 1, 0.68)
+	parent.add_child(l); return l
+
+func _on_verify_resend() -> void:
+	_verify_resend = true
+
+func _on_verify_back() -> void:
+	_verify_back = true
+
+func _verify_email_gate() -> bool:
+	if _id_token == "": return false
+	var first := await _api("verify/check", {})
+	var st := str(first.data.get("status", "")) if first.ok else ""
+	if st == "verified": return true
+	if _account_info.is_empty(): await _load_account_info()
+	if st == "" and bool(_account_info.get("emailVerified", false)): return true      # server unreachable: trust an already verified account
+	var ui := _overlay_card(400.0); var layer: Control = ui.layer; var box: VBoxContainer = ui.box
+	var ring_holder := Control.new(); ring_holder.custom_minimum_size = Vector2(132, 132); ring_holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; box.add_child(ring_holder)
+	var ring := VerifyRing.new(); ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); ring_holder.add_child(ring)
+	var num := Label.new(); num.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); num.text = "…"; num.add_theme_font_size_override("font_size", 40)
+	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; ring_holder.add_child(num)
+	_centered_label(box, "Verify your email", 26)
+	_centered_label(box, "We sent you a link. Open it within 35 seconds, or it expires.", 16, true)
+	var mail := _centered_label(box, str(_account_info.get("email", "")), 16)
+	var state_label := _centered_label(box, "", 15, true)
+	var resend := Button.new(); resend.text = "Send a new link"; resend.custom_minimum_size = Vector2(0, 46); resend.visible = false
+	resend.add_theme_stylebox_override("normal", ThemeBuilder.accent_box()); resend.add_theme_stylebox_override("hover", ThemeBuilder.accent_box(true)); resend.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
+	resend.add_theme_color_override("font_color", Color(1, 1, 1)); resend.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	resend.pressed.connect(_on_verify_resend); box.add_child(resend)
+	var back := Button.new(); back.text = "Back to log in"; back.custom_minimum_size = Vector2(0, 44); back.pressed.connect(_on_verify_back); box.add_child(back)
+	if mail.text == "": mail.visible = false
+	_verify_back = false; _verify_resend = true
+	var state := "sending"; var end_ms := 0; var total_ms := 35000; var last_poll := 0; var verified := false
+	while is_instance_valid(layer):
+		if _verify_back: break
+		if _verify_resend:
+			_verify_resend = false; state = "sending"; resend.visible = false; num.text = "…"; ring.progress = 1.0; ring.queue_redraw(); state_label.text = "Sending your link…"; state_label.modulate = Color(1, 1, 1, 0.68)
+			var sent := await _request_json(AUTH_URL + "sendOobCode?key=" + FIREBASE_API_KEY, {"requestType": "VERIFY_EMAIL", "idToken": _id_token})
+			if not is_instance_valid(layer): return false
+			var win: Dictionary = {}
+			if sent.ok: win = await _api("verify/start", {})
+			if not is_instance_valid(layer): return false
+			if not sent.ok or not win.get("ok", false):
+				state = "expired"; resend.visible = true; resend.disabled = false; num.text = "0"; state_label.text = "We couldn't send the email. Try again in a moment."; state_label.modulate = Color(1, 0.55, 0.55); continue
+			total_ms = maxi(1000, int(win.data.get("remainingMs", 35000))); end_ms = Time.get_ticks_msec() + total_ms; last_poll = Time.get_ticks_msec(); state = "wait"; state_label.text = "Waiting for you to open the link…"
+		await get_tree().create_timer(0.25).timeout
+		if not is_instance_valid(layer): return false
+		if state != "wait": continue
+		var left := maxi(0, end_ms - Time.get_ticks_msec())
+		ring.progress = float(left) / float(total_ms); ring.queue_redraw(); num.text = str(ceili(float(left) / 1000.0))
+		if left <= 0:
+			state = "expired"; resend.visible = true; state_label.text = "The link expired. Send a new one and open it within 35 seconds."; state_label.modulate = Color(1, 0.55, 0.55)
+		elif Time.get_ticks_msec() - last_poll >= 1500:
+			last_poll = Time.get_ticks_msec()
+			var chk := await _api("verify/check", {})
+			if not is_instance_valid(layer): return false
+			if state == "wait" and chk.ok:
+				var s2 := str(chk.data.get("status", ""))
+				if s2 == "verified": verified = true; break
+				if s2 == "expired":
+					state = "expired"; resend.visible = true; num.text = "0"; ring.progress = 0.0; ring.queue_redraw(); state_label.text = "The link expired. Send a new one and open it within 35 seconds."; state_label.modulate = Color(1, 0.55, 0.55)
+	if is_instance_valid(layer): layer.queue_free()
+	if verified: _account_info = {}
+	return verified
+
+# ---------------- update prompt: Yes / Later (1 hour), then it updates by itself ----------------
+func _update_tick() -> void:
+	if not Settings.update_available or Settings.update_installing: return
+	if Settings.update_due() and _screen in ["dashboard", "details", "customization", "friends", "notifications", "settings"]:
+		_run_update(); return      # the hour is over: update by itself (never while you are in a game)
+	_consider_update_prompt()
+
+func _consider_update_prompt() -> void:
+	if not Settings.update_available or Settings.update_snoozed() or Settings.update_due() or Settings.update_installing: return
+	if _update_prompt != null and is_instance_valid(_update_prompt): return
+	if not _screen in ["dashboard", "details", "customization", "friends", "notifications", "settings"]: return
+	var ui := _overlay_card(400.0); _update_prompt = ui.layer; var box: VBoxContainer = ui.box
+	_centered_label(box, "BlockTopia has an update to share with you", 24)
+	_centered_label(box, "Would you like to see it?", 17, true)
+	var yes := Button.new(); yes.text = "Yes"; yes.custom_minimum_size = Vector2(0, 48)
+	yes.add_theme_stylebox_override("normal", ThemeBuilder.accent_box()); yes.add_theme_stylebox_override("hover", ThemeBuilder.accent_box(true)); yes.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
+	yes.add_theme_color_override("font_color", Color(1, 1, 1)); yes.add_theme_color_override("font_hover_color", Color(1, 1, 1)); yes.pressed.connect(_run_update); box.add_child(yes)
+	var later := Button.new(); later.text = "Later (1 hour)"; later.custom_minimum_size = Vector2(0, 44)
+	later.pressed.connect(_update_later); box.add_child(later)
+	_centered_label(box, "If you wait, BlockTopia updates by itself after 1 hour." if Settings.is_pc() else "If you wait, we'll open the update download after 1 hour.", 13, true)
+
+func _run_update() -> void:
+	if Settings.update_installing: return
+	if _update_prompt != null and is_instance_valid(_update_prompt): _update_prompt.queue_free()
+	var ui := _overlay_card(360.0); _update_prompt = ui.layer; var box: VBoxContainer = ui.box
+	_centered_label(box, "Updating BlockTopia", 24)
+	var status := _centered_label(box, "Getting the update ready…", 16, true)
+	_update_status = status
+	if not Settings.update_progress.is_connected(_on_update_progress): Settings.update_progress.connect(_on_update_progress)
+	await Settings.install_update()
+	if is_instance_valid(status) and not Settings.update_installing and status.text == "Getting the update ready…":
+		status.text = "The download is opening. Install it, then reopen BlockTopia."      # Android / non-Windows: the browser takes over
+		var ok := Button.new(); ok.text = "OK"; ok.custom_minimum_size = Vector2(0, 44); ok.pressed.connect(_close_update_prompt); box.add_child(ok)
+
+func _on_update_progress(text: String) -> void:
+	if _update_status != null and is_instance_valid(_update_status): _update_status.text = text
+
+func _update_later() -> void:
+	Settings.snooze_update(); _close_update_prompt()
+
+func _close_update_prompt() -> void:
+	if _update_prompt != null and is_instance_valid(_update_prompt): _update_prompt.queue_free()
+
+func _on_update_failed(text: String) -> void:
+	if _update_prompt == null or not is_instance_valid(_update_prompt): return
+	var box: Node = _update_prompt.find_children("*", "VBoxContainer", true, false).front()
+	for c in box.get_children(): c.queue_free()
+	_centered_label(box, "Couldn't update", 24); _centered_label(box, text, 16, true)
+	var retry := Button.new(); retry.text = "Try again"; retry.custom_minimum_size = Vector2(0, 44); retry.pressed.connect(_run_update); box.add_child(retry)
+	var close := Button.new(); close.text = "Close"; close.custom_minimum_size = Vector2(0, 44); close.pressed.connect(_close_update_prompt); box.add_child(close)
 
 func _open_update_download() -> void:
 	if Settings.update_url != "": OS.shell_open(Settings.update_url)
@@ -495,6 +641,9 @@ func _friend_card(f: Dictionary) -> Button:
 	b.pressed.connect(_open_friend.bind(f))
 	return b
 
+func _on_friend_scrim(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed: _close_friend_panel()
+
 func _close_friend_panel(animate := true) -> void:
 	if _chat_timer != null: _chat_timer.queue_free(); _chat_timer = null
 	_friend_uid = ""; _chat_box = null; _chat_scroll = null; _chat_input = null; _chat_status = null; _chat_sig = ""
@@ -512,7 +661,7 @@ func _open_friend(f: Dictionary) -> void:
 	_friend_uid = str(f.get("uid", ""))
 	var layer := Control.new(); layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(layer); _friend_layer = layer
 	var scrim := ColorRect.new(); scrim.color = Color(0, 0, 0, 0.4); scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scrim.gui_input.connect(func(e: InputEvent): if e is InputEventMouseButton and e.pressed: _close_friend_panel()); layer.add_child(scrim)
+	scrim.gui_input.connect(_on_friend_scrim); layer.add_child(scrim)
 	var w := minf(370.0, get_viewport_rect().size.x)
 	var panel := PanelContainer.new(); panel.name = "Panel"; panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
 	panel.offset_left = -w; panel.offset_right = 0.0
@@ -547,7 +696,7 @@ func _open_friend(f: Dictionary) -> void:
 	_chat_box = VBoxContainer.new(); _chat_box.add_theme_constant_override("separation", 6); _chat_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _chat_scroll.add_child(_chat_box)
 	var send_row := HBoxContainer.new(); send_row.add_theme_constant_override("separation", 8); stack.add_child(send_row)
 	_chat_input = LineEdit.new(); _chat_input.placeholder_text = "Message %s" % str(f.get("username", "friend")); _chat_input.max_length = 150; _chat_input.custom_minimum_size = Vector2(0, 42); _chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_chat_input.text_submitted.connect(func(_t): _chat_send()); send_row.add_child(_chat_input)
+	_chat_input.text_submitted.connect(_on_chat_submit); send_row.add_child(_chat_input)
 	var send := Button.new(); send.text = "Send"; send.custom_minimum_size = Vector2(76, 42); send.pressed.connect(_chat_send); send_row.add_child(send)
 	_chat_status = Label.new(); _chat_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _chat_status.add_theme_font_size_override("font_size", 13); _chat_status.modulate = Color(1, 0.75, 0.55, 0.95); stack.add_child(_chat_status)
 	_chat_timer = Timer.new(); _chat_timer.wait_time = 3.0; _chat_timer.autostart = true; add_child(_chat_timer); _chat_timer.timeout.connect(_chat_load)
@@ -595,6 +744,9 @@ func _chat_add_bubble(m: Dictionary) -> void:
 	bubble.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.16, 0.3, 0.55) if mine else Color(0.16, 0.16, 0.19)), ThemeBuilder.c(Color(0.2, 0.2, 0.24)), 10)); row.add_child(bubble)
 	var text := str(m.get("text", ""))
 	var label := Label.new(); label.text = text; label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; label.custom_minimum_size = Vector2(minf(230.0, 9.0 * text.length() + 22.0), 0); bubble.add_child(label)
+
+func _on_chat_submit(_t: String) -> void:
+	_chat_send()
 
 func _chat_send() -> void:
 	if _chat_input == null or _chat_sending or _friend_uid == "": return
@@ -1024,6 +1176,13 @@ func _register_device() -> void:
 	await _fs(HTTPClient.METHOD_PATCH, path + "?" + "&".join(query), {"fields": typed})
 
 func _show_dashboard() -> void:
+	if not _email_ok:      # the email must be verified: open the link within 35 seconds of sending it
+		if not await _verify_email_gate():
+			_clear_native_session(); _busy = false; _auth_mode = "login"; _show_auth("Verify your email to continue. Log in again to get a new link."); return
+		_email_ok = true
+	_show_dashboard_now()
+
+func _show_dashboard_now() -> void:
 	_hide_auth_shell()
 	_screen = "dashboard"; _clear()
 	if not _device_registered: _device_registered = true; _register_device()
@@ -1251,7 +1410,7 @@ func _sign_out() -> void:
 	_clear_native_session(); _auth_mode = "login"; _show_auth()
 
 func _clear_native_session() -> void:
-	_id_token = ""; _refresh_token = ""; _token_expiry = 0; _profile = {}; _reaction = ""; _report_open = false; _account_info = {}; _device_registered = false
+	_id_token = ""; _refresh_token = ""; _token_expiry = 0; _profile = {}; _reaction = ""; _report_open = false; _account_info = {}; _device_registered = false; _email_ok = false
 	if _heartbeat != null: _heartbeat.queue_free(); _heartbeat = null
 	_friends_gen += 1
 	Settings.clear_native_session()

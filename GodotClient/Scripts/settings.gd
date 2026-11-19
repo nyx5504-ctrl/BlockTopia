@@ -16,6 +16,11 @@ var update_available := false
 var update_version := ""
 var update_url := ""
 var _update_check_running := false
+var update_snooze_until := 0          # unix time: after "Later" the app updates itself once this has passed
+var update_snooze_version := ""
+var update_installing := false
+signal update_progress(text: String)
+signal update_failed(text: String)
 
 var sensitivity := 0.003
 var volume := 0.8
@@ -62,14 +67,14 @@ func is_mobile() -> bool:
 func load_cfg() -> void:
 	var c := ConfigFile.new()
 	if c.load(CFG_PATH) != OK: return
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "update_snooze_until", "update_snooze_version", "show_names", "fullscreen"]:
 		set(k, c.get_value("s", k, get(k)))
 	native_remember = bool(c.get_value("auth", "remember", true))
 	native_refresh_token = str(c.get_value("auth", "refresh_token", "")) if native_remember else ""
 
 func save_cfg() -> void:
 	var c := ConfigFile.new()
-	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "update_snooze_until", "update_snooze_version", "show_names", "fullscreen"]:
 		c.set_value("s", k, get(k))
 	c.set_value("auth", "remember", native_remember)
 	c.set_value("auth", "refresh_token", native_refresh_token if native_remember else "")
@@ -122,6 +127,59 @@ func check_for_app_update() -> void:
 			break
 	update_available = true
 	app_update_available.emit(update_version)
+
+## "Later (1 hour)": ask again after the hour has passed by installing the update by itself.
+func snooze_update() -> void:
+	update_snooze_version = update_version; update_snooze_until = int(Time.get_unix_time_from_system()) + 3600; save_cfg()
+
+func update_snoozed() -> bool:
+	return update_available and update_snooze_version == update_version and int(Time.get_unix_time_from_system()) < update_snooze_until
+
+func update_due() -> bool:
+	return update_available and update_snooze_version == update_version and update_snooze_until > 0 and int(Time.get_unix_time_from_system()) >= update_snooze_until
+
+## Windows: downloads the new BlockTopia.exe, closes the app, swaps the file and starts the new version by itself.
+## Android: the browser downloads the new APK and Android asks you to confirm the install (Android doesn't allow silent installs).
+func install_update() -> void:
+	if update_installing or update_url == "": return
+	if OS.get_name() != "Windows" or OS.has_feature("editor") or not update_url.to_lower().ends_with(".zip"):
+		OS.shell_open(update_url); return
+	update_installing = true; update_progress.emit("Downloading the update…")
+	var dir := OS.get_user_data_dir()
+	var zip_path := dir.path_join("update.zip")
+	var req := HTTPRequest.new(); req.download_file = zip_path; req.max_redirects = 10; req.timeout = 0.0; add_child(req)
+	if req.request(update_url) != OK: req.queue_free(); _update_fail("Couldn't start the download."); return
+	var resp: Array = await req.request_completed
+	req.queue_free()
+	if int(resp[0]) != HTTPRequest.RESULT_SUCCESS or int(resp[1]) != 200: _update_fail("The download didn't finish. Check your connection."); return
+	update_progress.emit("Installing…")
+	var zr := ZIPReader.new()
+	if zr.open(zip_path) != OK: _update_fail("The download was damaged."); return
+	var data := PackedByteArray()
+	for f in zr.get_files():
+		if str(f).to_lower().ends_with(".exe"): data = zr.read_file(str(f)); break
+	zr.close()
+	if data.size() < 4000000: _update_fail("The update file looks wrong."); return
+	var new_exe := dir.path_join("BlockTopia-update.exe")
+	var fa := FileAccess.open(new_exe, FileAccess.WRITE)
+	if fa == null: _update_fail("Couldn't save the update."); return
+	fa.store_buffer(data); fa.close(); DirAccess.remove_absolute(zip_path)
+	var target := OS.get_executable_path().replace("/", "\\")
+	var src := new_exe.replace("/", "\\")
+	var bat := dir.path_join("apply-update.bat")
+	var lines := PackedStringArray(["@echo off", "set n=0", ":wait", "timeout /t 1 /nobreak >nul",
+		'copy /y "' + src + '" "' + target + '" >nul 2>&1', "if not errorlevel 1 goto done", "set /a n+=1", "if %n% lss 40 goto wait",
+		'start "" "https://github.com/nyx5504-ctrl/BlockTopia/releases/latest"', "exit /b 1", ":done", 'del "' + src + '" >nul 2>&1', 'start "" "' + target + '"', '(goto) 2>nul & del "%~f0"'])
+	var bf := FileAccess.open(bat, FileAccess.WRITE)
+	if bf == null: _update_fail("Couldn't prepare the update."); return
+	bf.store_string("\r\n".join(lines) + "\r\n"); bf.close()
+	update_progress.emit("Restarting BlockTopia…")
+	OS.create_process("cmd.exe", ["/c", bat.replace("/", "\\")])
+	await get_tree().create_timer(0.6).timeout
+	get_tree().quit()
+
+func _update_fail(text: String) -> void:
+	update_installing = false; update_failed.emit(text)
 
 func _version_is_newer(candidate: String, installed: String) -> bool:
 	var a := candidate.trim_prefix("v").split(".")

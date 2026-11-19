@@ -97,6 +97,40 @@ try:
         check(not page.is_visible("#pwOpen"), "Google-only accounts don't show Change password")
         page.fill("#descInput", "Hi there"); page.click("#descSave"); page.wait_for_function("document.querySelector('#descSave').disabled === false")
         check(desc.get("auth") == "Bearer tok-g1" and "Hi there" in (desc.get("body") or ""), "description is saved through the server with the user's token")
+        # ---- 35 s email verification + update prompt ----
+        def fresh(verified, remaining):
+            c2 = b.new_context(viewport={"width": 1280, "height": 800}); pg = c2.new_page(); errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+            c2.route("**/*", lambda r: r.abort() if not r.request.url.startswith(f"http://localhost:{PORT}") and "gstatic.com/firebasejs" not in r.request.url and "onrender.com" not in r.request.url else r.fallback())
+            c2.route("**/firebasejs/10.12.2/firebase-app.js", lambda r: r.fulfill(**js(APP)))
+            c2.route("**/firebasejs/10.12.2/firebase-auth.js", lambda r: r.fulfill(**js(AUTH.replace("emailVerified: true", "emailVerified: " + ("true" if verified else "false")))))
+            c2.route("**/firebasejs/10.12.2/firebase-firestore.js", lambda r: r.fulfill(**js(FS)))
+            def be(r):
+                if r.request.method == "OPTIONS": return r.fulfill(status=204, headers=CORS)
+                u = r.request.url
+                if u.endswith("/verify/start"): return r.fulfill(status=200, headers=CORS, content_type="application/json", body=json.dumps({"remainingMs": remaining}))
+                if u.endswith("/verify/check"): return r.fulfill(status=200, headers=CORS, content_type="application/json", body=json.dumps({"status": "verified" if verified else "pending"}))
+                r.fulfill(status=200, headers=CORS, content_type="application/json", body="{}")
+            c2.route("**onrender.com/**", be)
+            ver = {"v": "a"}
+            c2.route("**/version.json*", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps({"version": ver["v"]})))
+            return c2, pg, ver, errs
+        def google_in(pg):
+            pg.goto(f"http://localhost:{PORT}/"); pg.wait_for_selector("#auth:not([hidden])"); pg.click("#googleBtn"); pg.wait_for_selector("#formPick:not([hidden])"); pg.click("#pkBtn")
+        c2, pg, ver, errs = fresh(False, 2000); google_in(pg)
+        pg.wait_for_selector("#verifyOverlay:not([hidden])")
+        check(pg.text_content("#vfMail").strip() == "new.user@example.com" and pg.is_hidden("#vfResend"), "unverified sign-up shows the 35 s verify pop-up with a countdown")
+        pg.wait_for_selector("#vfResend:not([hidden])", timeout=8000)
+        check("0" == pg.text_content("#vfNum").strip() and pg.is_hidden("#app"), "when the time runs out the link expires and the app stays locked")
+        pg.click("#vfBack"); pg.wait_for_selector("#verifyOverlay", state="hidden"); check(pg.is_visible("#auth"), "Back to log in returns to the sign-in page"); c2.close()
+        c2, pg, ver, errs = fresh(True, 2000); google_in(pg); pg.wait_for_selector("#app:not([hidden])")
+        check(pg.is_hidden("#verifyOverlay"), "verified accounts go straight in")
+        ver["v"] = "b"; pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); pg.wait_for_selector("#updateOverlay:not([hidden])")
+        check("update to share with you" in pg.text_content("#updTitle"), "a new GitHub deploy shows the update prompt")
+        pg.click("#updLater"); pg.wait_for_selector("#updateOverlay", state="hidden")
+        sn = json.loads(pg.evaluate("localStorage.getItem('bt_update_snooze')")); check(sn["version"] == "b" and 3500000 < sn["until"] - time.time() * 1000 < 3700000, "Later snoozes for one hour")
+        pg.evaluate("localStorage.setItem('bt_update_snooze', JSON.stringify({version:'b', until: Date.now()-1}))")
+        with pg.expect_navigation(timeout=8000): pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+        check(True, "after the hour the site updates by itself"); check(not errs, "no page errors in verify/update flows: " + "; ".join(errs[:3])); c2.close()
         check(not errors, "no page errors: " + "; ".join(errors[:3]))
         b.close()
 finally:

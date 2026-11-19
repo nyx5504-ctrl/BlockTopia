@@ -13,7 +13,8 @@ const PORT = +process.env.PORT || 8787;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || "AIzaSyCdEvulpM-5MGOTqQhcIrCaeylSMzXtoaA";
 const ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:8000").split(",").map(s => s.trim());
 const WS_URL = process.env.PUBLIC_WS_URL || `ws://localhost:${PORT}`;
-const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map(), deviceLinks = new Map(), deviceHits = new Map(), dmHits = new Map(), descHits = new Map();
+const rooms = new Map(), codes = new Map(), sessions = new Map(), byUid = new Map(), launchHits = new Map(), feedbackHits = new Map(), gameReportHits = new Map(), usernameLoginHits = new Map(), deviceLinks = new Map(), deviceHits = new Map(), dmHits = new Map(), descHits = new Map(), verifyWindows = new Map(), verifyLate = new Set(), verifyHits = new Map();
+const VERIFY_MS = Number(process.env.VERIFY_WINDOW_MS) || 35000, VERIFY_GRACE_MS = process.env.VERIFY_GRACE_MS !== undefined ? Number(process.env.VERIFY_GRACE_MS) : 3000;
 let roomSeq = 1;
 const rnd = n => crypto.randomBytes(n).toString("hex");
 const CHARACTER_PARTS = {
@@ -141,6 +142,39 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return out(500, { error: "Could not load notifications." });
     }
+  }
+  // ---- Email verification must happen within 35 seconds of sending the link ----
+  // Firebase links last an hour and can't be shortened, so the server keeps the clock: a verification that lands after the window is revoked.
+  if (req.url.startsWith("/verify/")) {
+    try {
+      await readBody();
+      const tok = (req.headers.authorization || "").replace(/^Bearer /, "");
+      let u; try { u = await verifyToken(tok); } catch { return out(401, { error: "not signed in" }); }
+      const now = Date.now(), w = verifyWindows.get(u.uid);
+      if (req.url === "/verify/start") {
+        if (tooMany(verifyHits, u.uid, 8, 600000)) return out(429, { error: "TOO_MANY_ATTEMPTS" });
+        verifyWindows.set(u.uid, now + VERIFY_MS); verifyLate.delete(u.uid);
+        if (await store.isEmailVerified(u.uid)) await store.revokeEmailVerified(u.uid);      // a fresh link needs a fresh verification
+        return out(200, { seconds: Math.round(VERIFY_MS / 1000), remainingMs: VERIFY_MS });
+      }
+      if (req.url === "/verify/dev-confirm" && process.env.DEV_AUTH === "1") { store.devConfirmEmail(u.uid); return out(200, { ok: true }); }
+      if (req.url === "/verify/check") {
+        const verified = await store.isEmailVerified(u.uid);
+        if (!w) {
+          if (verified && verifyLate.has(u.uid)) { await store.revokeEmailVerified(u.uid); return out(200, { status: "expired" }); }   // an old link clicked after its window
+          return out(200, { status: verified ? "verified" : "none" });
+        }
+        if (verified) {
+          verifyWindows.delete(u.uid);
+          if (now <= w + VERIFY_GRACE_MS) return out(200, { status: "verified" });
+          await store.revokeEmailVerified(u.uid); verifyLate.add(u.uid);
+          return out(200, { status: "expired" });
+        }
+        if (now > w + VERIFY_GRACE_MS) { verifyWindows.delete(u.uid); verifyLate.add(u.uid); return out(200, { status: "expired" }); }
+        return out(200, { status: "pending", remainingMs: Math.max(0, w - now) });
+      }
+      return out(404, { error: "not found" });
+    } catch { return out(500, { error: "verification unavailable" }); }
   }
   if (req.url === "/friends" || req.url === "/friend-chat") {
     try {

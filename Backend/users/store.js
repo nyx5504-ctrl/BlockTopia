@@ -10,7 +10,7 @@ try {
 if (!db && process.env.DEV_AUTH !== "1") { console.error("No Firebase credentials. Set FIREBASE_SERVICE_ACCOUNT (or DEV_AUTH=1 for local tests)."); process.exit(1); }
 if (!db) console.warn("[dev] running without Firestore: data is kept in memory only");
 
-export const mem = { users: new Map(), friends: new Set(), stats: new Map(), reports: [], presence: new Map(), blocks: new Map(), requests: new Map(), gameReactions: new Map(), dms: new Map(), devices: new Map() };
+export const mem = { users: new Map(), friends: new Set(), stats: new Map(), reports: [], presence: new Map(), blocks: new Map(), requests: new Map(), gameReactions: new Map(), dms: new Map(), devices: new Map(), verified: new Set() };
 const TS = () => admin.firestore.FieldValue.serverTimestamp();
 const INC = n => admin.firestore.FieldValue.increment(n);
 
@@ -206,3 +206,8 @@ export async function listDm(a, b, limit = 50) {
   return snap.docs.map(d => ({ id: d.id, from: d.data().from, text: d.data().text, at: d.data().at })).reverse();
 }
 export async function touchDevice(uid) { if (!db) mem.devices.set(uid, Date.now()); }
+
+// ---------- email verification (35 second window, see /verify/*) ----------
+export async function isEmailVerified(uid) { if (!admin.apps.length) return mem.verified.has(uid); return !!(await admin.auth().getUser(uid)).emailVerified; }
+export async function revokeEmailVerified(uid) { if (!admin.apps.length) return void mem.verified.delete(uid); await admin.auth().updateUser(uid, { emailVerified: false }); }
+export function devConfirmEmail(uid) { mem.verified.add(uid); }
