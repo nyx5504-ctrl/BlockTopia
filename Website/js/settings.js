@@ -8,7 +8,7 @@ import { errKey } from "./auth.js";
 import { PALETTE, PART_DEFAULTS } from "./palette.js";
 import { CONFIG } from "./config.js";
 
-const SECTIONS = ["account", "security", "privacy", "language"];
+const SECTIONS = ["account", "security", "privacy"];
 let stopDevices = null, devices = [], blocks = [];
 
 const save = patch => F.updateDoc(F.doc(db, "users", S.user.uid), patch).then(() => { Object.assign(S.profile, patch); return true; }).catch(() => { toast(t("err_generic"), "bad"); return false; });

@@ -14,6 +14,13 @@ export const avatar = (name, color, cls = "", character = null) => {
   return '<span class="av ' + cls + '" style="--c:' + safeColor(color) + ';--face:' + face + '" role="img" aria-label="' + esc(name || "Player") + '"><svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="50" cy="51" rx="36" ry="42" fill="var(--face)"/><ellipse cx="37" cy="42" rx="5.5" ry="9" fill="#101014"/><ellipse cx="64" cy="42" rx="5" ry="8" fill="#101014"/><path d="M30 62 Q50 87 71 61" fill="none" stroke="#101014" stroke-width="5" stroke-linecap="round"/></svg></span>';
 };
 
+// Avatar with a live 3D head (see head3d.js: call hydrateHeads(container) after inserting this into the page). `online` adds the green dot.
+export const avatarHead = (name, color, cls = "", character = null, online = false) => {
+  const html = avatar(name, color, cls, character);
+  const data = character && typeof character === "object" ? esc(JSON.stringify(character)) : "{}";
+  return html.replace('<span class="av ', '<span data-head="' + data + '" class="av ').replace(/<\/span>$/, (online ? '<i class="av-dot"></i>' : "") + "</span>");
+};
+
 let tt;
 export function toast(msg, kind = "") {
   const el = $("#toast"); el.textContent = msg; el.className = "toast show " + kind;

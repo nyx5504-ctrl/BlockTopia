@@ -50,13 +50,6 @@
 <!-- ============ LOG IN / SIGN UP ============ -->
 <main id="auth" class="auth" hidden>
   <button class="lang-fab" id="authLang" type="button" data-i18n-aria-label="lang_title"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span id="authLangName">English</span></button>
-  <aside class="auth-hero">
-    <div class="hero-brand"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg><span>BlockTopia</span></div>
-    <h2 data-i18n="hero_title">Your world. Your friends. Your rules.</h2>
-    <p data-i18n="hero_sub">Jump into BASEPLATE, customize your character and play together.</p>
-    <ul class="hero-list"><li data-i18n="hero_f1">Play with friends in real time</li><li data-i18n="hero_f2">Make your character truly yours</li><li data-i18n="hero_f3">Safe chat, filtered for everyone</li></ul>
-    <div class="hero-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-  </aside>
   <section class="card auth-card">
     <div class="auth-brand">
       <svg class="logo logo-lg" aria-hidden="true"><use href="#logo"/></svg>
@@ -219,7 +212,6 @@
             <button type="button" role="tab" data-sec="account"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span data-i18n="sec_account">Account</span></button>
             <button type="button" role="tab" data-sec="security"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span data-i18n="sec_security">Security</span></button>
             <button type="button" role="tab" data-sec="privacy"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="sec_privacy">Privacy</span></button>
-            <button type="button" role="tab" data-sec="language"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="sec_language">Language</span></button>
           </div>
 
           <div>
@@ -251,6 +243,9 @@
                   <button type="button" class="theme" role="radio" data-theme-pick="light"><span class="pv l"><i></i><u><i></i><i></i></u></span><b data-i18n="theme_light">White</b></button>
                 </div>
               </div>
+              <div class="card">
+                <button class="srow langrow" id="langRow" type="button"><span class="lbl" data-i18n="lang_title">Language</span><span class="val"><span id="langCur">English</span><svg class="ic flip" aria-hidden="true"><use href="#i-chevron"/></svg></span></button>
+              </div>
               <button class="btn danger block" data-logout type="button" style="max-width:320px"><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg><span data-i18n="logout">Log out</span></button>
             </div>
 
@@ -274,11 +269,6 @@
             </div>
 
             <!-- Language -->
-            <div class="panel" data-panel="language" hidden>
-              <div class="card">
-                <button class="srow langrow" id="langRow" type="button"><span class="lbl" data-i18n="lang_title">Language</span><span class="val"><span id="langCur">English</span><svg class="ic flip" aria-hidden="true"><use href="#i-chevron"/></svg></span></button>
-              </div>
-            </div>
           </div>
         </div>
       </section>

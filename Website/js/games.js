@@ -1,7 +1,9 @@
 // Home: the game list (only Baseplate for now), likes, favorites and live player counts.
 import { db, F } from "./fb.js";
 import { S, on } from "./state.js";
-import { $, esc, icon, avatar, toast } from "./ui.js";
+import { $, esc, icon, avatar, avatarHead, ms, toast } from "./ui.js";
+import { hydrateHeads } from "./head3d.js";
+import { profiles } from "./friends.js";
 import { t } from "./i18n.js";
 import { play } from "./play.js";
 
@@ -43,16 +45,19 @@ function featured(g) {
 }
 const card = g => `<button class="card gcard" data-play="${g.id}" type="button"><div class="art">${THUMB}</div><div class="meta"><b>${esc(g.name)}</b><span>${esc(t("playing", { n: st(g.id).playing }))}</span></div></button>`;
 
+let profAt = 0;
 function renderHomeFriends() {
   const wrap = $("#homeFriends");
   if (!wrap) return;
   const entries = S.friends instanceof Map ? [...S.friends.entries()] : [];
+  if (entries.length && Date.now() - profAt > 45000) { profAt = Date.now(); profiles().then(() => renderHomeFriends()).catch(() => {}); }   // friends' characters live in their profiles
   const friendTiles = entries.slice(0, 8).map(([id, friend]) => {
-    const name = friend.username || "Player";
-    const online = S.presence instanceof Map && S.presence.has(id);
+    const name = friend.username || "Player", p = S.fprof.get(id)?.data || {};
+    const inGame = S.presence instanceof Map && S.presence.has(id);
+    const online = inGame || (p.lastSeen && Date.now() - ms(p.lastSeen) < 180000);
     return `<a class="card" href="#/friends" style="display:flex;align-items:center;gap:12px;padding:14px;text-decoration:none">
-      ${avatar(name, friend.avatarColor || "#f4f4f2", "lg")}
-      <span style="min-width:0;display:flex;flex-direction:column"><b>${esc(name)}</b><small style="color:var(--muted)">${online ? "Playing Baseplate" : "View friend"}</small></span>
+      ${avatarHead(name, p.avatarColor || friend.avatarColor || "#f4f4f2", "lg", p.character, !!online)}
+      <span style="min-width:0;display:flex;flex-direction:column"><b>${esc(name)}</b><small style="color:var(--muted)">${inGame ? "Playing Baseplate" : online ? esc(t("online")) : "View friend"}</small></span>
     </a>`;
   }).join("");
   const invite = `<a class="card" href="#/friends" style="display:flex;align-items:center;gap:12px;padding:14px;text-decoration:none">
@@ -60,6 +65,7 @@ function renderHomeFriends() {
     <span style="display:flex;flex-direction:column"><b>Add people to play</b><small style="color:var(--muted)">Explore BlockTopia together</small></span>
   </a>`;
   wrap.innerHTML = `<h2>Friends</h2><div class="grid">${friendTiles}${invite}</div>`;
+  hydrateHeads(wrap);
 }
 
 export function renderHome(q = query) {

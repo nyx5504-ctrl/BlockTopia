@@ -1,7 +1,8 @@
 // Friends: search, requests, friend list, who is in a game, join.
 import { db, F } from "./fb.js";
 import { S, on, emit } from "./state.js";
-import { $, esc, avatar, icon, ms, toast } from "./ui.js";
+import { $, esc, avatar, avatarHead, icon, ms, toast } from "./ui.js";
+import { hydrateHeads } from "./head3d.js";
 import { t } from "./i18n.js";
 import { play } from "./play.js";
 
@@ -15,7 +16,7 @@ export function startFriends() {
   S.stops.push(F.onSnapshot(F.query(F.collection(db, "presence"), F.where("game", "==", "baseplate")), s => { S.presence = new Map(s.docs.map(d => [d.id, d.data()])); emit("friends"); }, warn));
 }
 
-async function profiles() {   // fresh profile (for lastSeen) of every friend, cached for 45 s
+export async function profiles() {   // fresh profile (for lastSeen) of every friend, cached for 45 s
   await Promise.all([...S.friends.keys()].map(async id => {
     const c = S.fprof.get(id);
     if (c && Date.now() - c.at < 45000) return;
@@ -37,10 +38,11 @@ export async function renderFriends() {
   $("#reqList").innerHTML = reqs.map(r => `<div class="row">${avatar(r.fromName, r.fromColor)}<div class="grow"><div class="name">${esc(r.fromName || "?")}</div></div>
     <div class="btns"><button class="btn primary sm" data-accept="${esc(r.id)}" type="button">${esc(t("accept"))}</button><button class="btn sm" data-decline="${esc(r.id)}" type="button">${esc(t("decline"))}</button></div></div>`).join("");
   const list = [...S.friends.entries()].map(([id, f]) => ({ id, f, s: statusOf(id) })).sort((a, b) => (b.s.on - a.s.on) || String(a.f.username).localeCompare(String(b.f.username)));
-  $("#friendList").innerHTML = list.length ? list.map(({ id, f, s }) => `<div class="row">${avatar(f.username, S.fprof.get(id)?.data?.avatarColor || f.avatarColor)}
+  $("#friendList").innerHTML = list.length ? list.map(({ id, f, s }) => `<div class="row">${avatarHead(f.username, S.fprof.get(id)?.data?.avatarColor || f.avatarColor, "", S.fprof.get(id)?.data?.character, statusOf(id).on)}
     <div class="grow"><div class="name">${esc(f.username)}</div><div class="sub"><span class="dot ${s.on ? "on" : ""}"></span>${esc(s.text)}</div></div>
     <div class="btns">${s.join ? `<button class="btn primary sm" data-join="${esc(id)}" type="button">${icon("play", "fill")} ${esc(t("join"))}</button>` : ""}<button class="btn ghost sm" data-remove="${esc(id)}" type="button">${esc(t("remove"))}</button></div></div>`).join("")
     : `<p class="empty">${esc(t("no_friends"))}</p>`;
+  hydrateHeads($("#friendList"));
   if (!$("#fResults").hidden) searchNow();
 }
 
