@@ -24,7 +24,7 @@ signal update_failed(text: String)
 
 var sensitivity := 0.003
 var volume := 0.8
-var graphics := 5           # 1 (lowest) .. 10 (highest): sets view distance, shadows and anti-aliasing
+var quality := 1            # 0 low, 1 medium, 2 high
 var fov := 70.0
 var cam_distance := 6.0
 var touch_opacity := 0.6
@@ -48,15 +48,8 @@ func _ready() -> void:
 	apply_audio()
 	if fullscreen: apply_window()
 
-## How far (metres) the game draws at graphics level 1..10. Level 1 hides everything past 40 m, level 10 reaches 1500 m (past the whole 500 m baseplate).
-static func view_distance_for(level: int) -> float:
-	return 40.0 * pow(1500.0 / 40.0, (clampi(level, 1, 10) - 1) / 9.0)
-
-func view_distance() -> float:
-	return view_distance_for(graphics)
-
 func reset_defaults() -> void:
-	sensitivity = 0.003; volume = 0.8; graphics = 5; fov = 70.0; cam_distance = 6.0; touch_opacity = 0.6; touch_size = 1.0
+	sensitivity = 0.003; volume = 0.8; quality = 1; fov = 70.0; cam_distance = 6.0; touch_opacity = 0.6; touch_size = 1.0
 	performance = false; shift_lock_enabled = false; show_names = true; fullscreen = false
 	apply_audio(); apply_window(); save_cfg(); changed.emit()
 
@@ -74,14 +67,14 @@ func is_mobile() -> bool:
 func load_cfg() -> void:
 	var c := ConfigFile.new()
 	if c.load(CFG_PATH) != OK: return
-	for k in ["sensitivity", "volume", "graphics", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "update_snooze_until", "update_snooze_version", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "update_snooze_until", "update_snooze_version", "show_names", "fullscreen"]:
 		set(k, c.get_value("s", k, get(k)))
 	native_remember = bool(c.get_value("auth", "remember", true))
 	native_refresh_token = str(c.get_value("auth", "refresh_token", "")) if native_remember else ""
 
 func save_cfg() -> void:
 	var c := ConfigFile.new()
-	for k in ["sensitivity", "volume", "graphics", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "update_snooze_until", "update_snooze_version", "show_names", "fullscreen"]:
+	for k in ["sensitivity", "volume", "quality", "fov", "cam_distance", "touch_opacity", "touch_size", "registered_exe", "device_id", "performance", "shift_lock_enabled", "lang", "theme", "update_snooze_until", "update_snooze_version", "show_names", "fullscreen"]:
 		c.set_value("s", k, get(k))
 	c.set_value("auth", "remember", native_remember)
 	c.set_value("auth", "refresh_token", native_refresh_token if native_remember else "")

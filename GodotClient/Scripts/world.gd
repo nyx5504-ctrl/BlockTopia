@@ -5,21 +5,38 @@ const HALF := 250.0                       # must match Backend/games/baseplate.j
 const SKY_PATH := "res://Assets/sky.png"  # equirectangular sky picture, swap it for any other 2:1 panorama
 const PLATE_PATH := "res://Assets/baseplate.png"
 var sun: DirectionalLight3D
+var env: Environment
 
 func build() -> void:
 	_environment(); _baseplate(); _walls()
 
 func _environment() -> void:
-	var env := Environment.new(); env.background_mode = Environment.BG_SKY
+	env = Environment.new(); env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var pano := PanoramaSkyMaterial.new(); pano.panorama = load(SKY_PATH)
 	sky.sky_material = pano; env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; env.ambient_light_color = Color(0.82, 0.88, 0.97); env.ambient_light_energy = 0.52
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; env.ambient_light_color = Color(0.80, 0.87, 0.98); env.ambient_light_energy = 0.62
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY          # materials pick up a little of the sky
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC; env.tonemap_exposure = 1.1; env.tonemap_white = 5.0       # soft highlights instead of hard clipping
+	env.adjustment_enabled = true; env.adjustment_contrast = 1.07; env.adjustment_saturation = 1.12            # a little more depth and colour
+	env.glow_enabled = true; env.glow_intensity = 0.4; env.glow_strength = 0.9; env.glow_bloom = 0.04; env.glow_hdr_threshold = 1.0
 	env.fog_enabled = false      # no fog: the sky picture stays clean
 	var we := WorldEnvironment.new(); we.environment = env; add_child(we)
-	sun = DirectionalLight3D.new(); sun.rotation_degrees = Vector3(-48, -32, 0); sun.light_color = Color(1.0, 0.97, 0.9); sun.light_energy = 0.72
-	sun.shadow_enabled = true; sun.directional_shadow_max_distance = 90.0; sun.shadow_blur = 1.2; add_child(sun)
+	sun = DirectionalLight3D.new(); sun.rotation_degrees = Vector3(-48, -32, 0); sun.light_color = Color(1.0, 0.96, 0.88); sun.light_energy = 1.0
+	sun.shadow_enabled = true; sun.shadow_bias = 0.03; sun.shadow_normal_bias = 1.2; add_child(sun)
+
+## Graphics quality: 0 Low, 1 Medium, 2 High, 3 Ultra. Each step gets sharper, softer shadows, smoother edges and sharper textures at an angle.
+func apply_quality(q: int, vp: Viewport) -> void:
+	q = clampi(q, 0, 2 if Settings.is_mobile() else 3)
+	sun.shadow_enabled = q >= 1
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q >= 2 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = [70.0, 110.0, 150.0, 220.0][q]
+	sun.shadow_blur = [1.0, 1.2, 1.6, 2.2][q]
+	RenderingServer.directional_shadow_atlas_set_size([2048, 2048, 4096, 8192][q], true)
+	RenderingServer.directional_soft_shadow_filter_set_quality([RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM, RenderingServer.SHADOW_QUALITY_SOFT_HIGH][q])
+	vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X][q]
+	vp.anisotropic_filtering_level = [Viewport.ANISOTROPY_2X, Viewport.ANISOTROPY_4X, Viewport.ANISOTROPY_8X, Viewport.ANISOTROPY_16X][q]
+	env.glow_enabled = q >= 2; env.glow_intensity = 0.35 if q == 2 else 0.5
 
 func _baseplate() -> void:
 	var mat := StandardMaterial3D.new(); mat.albedo_texture = load(PLATE_PATH)

@@ -26,7 +26,7 @@ var _fatal := false
 var _shotdir := ""
 
 func _ready() -> void:
-	ThemeBuilder.apply_to(get_tree(), false)       # the game always stays dark
+	ThemeBuilder.apply_to(get_tree(), true)        # the in-game menu follows the Black / White background choice
 	world = WorldBuilder.new(); add_child(world); world.build(); sun = world.sun
 	_build_ui()
 	Settings.changed.connect(_apply_quality); _apply_quality()
@@ -46,23 +46,7 @@ func _ready() -> void:
 		else: _fatal = true; _show("Sign in and choose Play from the dashboard.")
 
 func _apply_quality() -> void:
-	var g := Settings.graphics
-	var far := Settings.view_distance()
-	sun.shadow_enabled = g >= 3
-	sun.directional_shadow_max_distance = minf(far, 40.0 + g * 16.0)
-	var vp := get_viewport()
-	vp.msaa_3d = Viewport.MSAA_4X if g >= 9 else (Viewport.MSAA_2X if g >= 6 else Viewport.MSAA_DISABLED)
-	if local != null: local.cam.far = far
-	_apply_view_distance()
-
-## Remote players past the view distance are hidden (the baseplate and everything else is clipped by the camera's far plane).
-func _apply_view_distance() -> void:
-	if local == null: return
-	var far := Settings.view_distance()
-	var origin := local.global_position
-	for id in remotes:
-		var n: Avatar = remotes[id].node
-		n.visible = n.global_position.distance_to(origin) <= far
+	world.apply_quality(Settings.quality, get_viewport())
 
 # ---------------- UI ----------------
 func _build_ui() -> void:
@@ -71,6 +55,7 @@ func _build_ui() -> void:
 	plist = PlayerList.new(); add_child(plist)
 	fprompt = FriendPrompt.new(); add_child(fprompt)
 	chat.menu_pressed.connect(func(): pause.toggle())
+	chat.list_pressed.connect(plist.toggle); plist.toggled.connect(func(shown): chat.list_btn.active = shown); chat.list_btn.active = plist.is_shown()
 	pause.leave_requested.connect(_leave); pause.respawn_requested.connect(func(): Net.request_respawn())
 	plist.report_requested.connect(func(id): pause.open_report(id))
 	if Settings.is_mobile():
@@ -102,7 +87,7 @@ func _on_app_update_available(version: String) -> void:
 func _touch_on_ui(p: Vector2) -> bool:
 	if pause.visible or overlay.visible or _leaving: return true
 	if fprompt != null and fprompt.covers(p): return true
-	for ctl in [chat.menu_btn, chat.chat_btn, chat.window, plist.panel, plist.popup, update_notice, perf]:
+	for ctl in [chat.menu_btn, chat.chat_btn, chat.list_btn, chat.window, plist.panel, plist.popup, update_notice, perf]:
 		if ctl != null and ctl.is_visible_in_tree() and ctl.get_global_rect().has_point(p): return true
 	return false
 
@@ -132,7 +117,7 @@ func _on_welcome(m: Dictionary) -> void:
 	for id in remotes.keys(): remotes[id].node.queue_free()
 	remotes.clear()
 	if local == null:
-		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch; local.cam.far = Settings.view_distance()
+		local = LocalPlayer.new(); add_child(local); local.setup(Net.my_name, Color(str(m.get("color", "#ffffff"))), m.get("character", {})); local.touch = touch
 		local.shift_lock_changed.connect(func(on): _toast("Shift Lock on" if on else "Shift Lock off"))
 	local.teleport(Vector3(m.x, m.y, m.z))
 	for p in m.players: _add_remote(p)
@@ -196,7 +181,6 @@ func _process(delta: float) -> void:
 		var r = remotes[id]; var n: Avatar = r.node
 		n.position = n.position.lerp(r.target, 1.0 - exp(-14.0 * delta)); n.rotation.y = lerp_angle(n.rotation.y, r.ry, 1.0 - exp(-14.0 * delta))
 	if local == null: return
-	_apply_view_distance()
 	local.blocked = pause.visible or chat.typing or overlay.visible or _leaving
 	if local.blocked: local.rmb = false
 	if local.global_position.y < -50.0: Net.request_respawn()

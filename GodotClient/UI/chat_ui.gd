@@ -1,9 +1,11 @@
 class_name ChatUI
 extends CanvasLayer
-## Roblox-style top-left HUD: [menu button] [chat button]. The chat button toggles a chat window; the menu button opens the in-game menu.
+## Top-left HUD: [app icon = menu] [chat] [list = leaderboard]. Chat toggles the chat window, the app icon opens the in-game menu, the list button shows or hides the leaderboard.
 signal menu_pressed
+signal list_pressed
 var menu_btn: IconButton
 var chat_btn: IconButton
+var list_btn: IconButton
 var window: PanelContainer
 var log_box: RichTextLabel
 var input: LineEdit
@@ -14,8 +16,9 @@ func _ready() -> void:
 	layer = 5
 	var root := Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(root)
 	var bar := HBoxContainer.new(); bar.position = Vector2(12, 10); bar.add_theme_constant_override("separation", 8); root.add_child(bar)
-	menu_btn = IconButton.new("menu"); menu_btn.pressed.connect(func(): menu_pressed.emit()); bar.add_child(menu_btn)
+	menu_btn = IconButton.new("app"); menu_btn.pressed.connect(func(): menu_pressed.emit()); bar.add_child(menu_btn)
 	chat_btn = IconButton.new("chat"); chat_btn.pressed.connect(toggle_window); bar.add_child(chat_btn)
+	list_btn = IconButton.new("list"); list_btn.pressed.connect(func(): list_pressed.emit()); bar.add_child(list_btn)
 	window = PanelContainer.new(); window.position = Vector2(12, 66); window.custom_minimum_size = Vector2(380, 230); root.add_child(window)
 	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.04, 0.04, 0.05, 0.62); sb.set_corner_radius_all(14); sb.set_content_margin_all(10); window.add_theme_stylebox_override("panel", sb)
 	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); window.add_child(v)

@@ -33,7 +33,7 @@ func _ready() -> void:
 	root = Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
 	var dim := ColorRect.new(); dim.color = Color(0, 0, 0, 0.58); dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.add_child(dim)
 	panel = PanelContainer.new(); panel.set_anchors_preset(Control.PRESET_CENTER); root.add_child(panel)
-	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.07, 0.07, 0.078, 0.98), Color(0.24, 0.24, 0.27), 16))
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.07, 0.07, 0.078, 0.98)), ThemeBuilder.c(Color(0.24, 0.24, 0.27)), 14))
 	var host := MarginContainer.new(); for s in ["left", "right", "top", "bottom"]: host.add_theme_constant_override("margin_" + s, 14 if _mobile else 18)
 	panel.add_child(host)
 	var stack := VBoxContainer.new(); stack.add_theme_constant_override("separation", 12); host.add_child(stack)
@@ -47,8 +47,8 @@ func _ready() -> void:
 	var group := ButtonGroup.new()
 	for t in TABS:
 		var b := Button.new(); b.text = t; b.toggle_mode = true; b.button_group = group; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; b.custom_minimum_size = Vector2(0, 50 if _mobile else 44); b.add_theme_font_size_override("font_size", 16 if _mobile else 18); b.clip_text = true
-		var on := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95)); b.add_theme_stylebox_override("pressed", on); b.add_theme_stylebox_override("hover_pressed", on)
-		b.add_theme_color_override("font_pressed_color", Color(0.05, 0.05, 0.06)); b.add_theme_color_override("font_hover_pressed_color", Color(0.05, 0.05, 0.06))
+		var on := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95))); b.add_theme_stylebox_override("pressed", on); b.add_theme_stylebox_override("hover_pressed", on)
+		b.add_theme_color_override("font_pressed_color", ThemeBuilder.on_accent()); b.add_theme_color_override("font_hover_pressed_color", ThemeBuilder.on_accent())
 		b.pressed.connect(show_page.bind(t)); tabs.add_child(b); tab_btns[t] = b
 	# pages
 	var area := ScrollContainer.new(); area.size_flags_vertical = Control.SIZE_EXPAND_FILL; area.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; stack.add_child(area)
@@ -61,9 +61,9 @@ func _ready() -> void:
 	var red := ThemeBuilder.box(Color(0.5, 0.13, 0.13), Color(0.68, 0.2, 0.2)); leave_btn.add_theme_stylebox_override("normal", red)
 	leave_btn.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(0.62, 0.16, 0.16), Color(0.8, 0.25, 0.25))); leave_btn.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.42, 0.1, 0.1), Color(0.68, 0.2, 0.2)))
 	var resume := _foot_btn(foot, "Resume", "Esc", close)
-	var white := ThemeBuilder.box(Color(0.93, 0.93, 0.95), Color(0.93, 0.93, 0.95)); resume.add_theme_stylebox_override("normal", white); resume.add_theme_stylebox_override("hover", ThemeBuilder.box(Color(1, 1, 1), Color(1, 1, 1)))
-	resume.add_theme_stylebox_override("pressed", ThemeBuilder.box(Color(0.8, 0.8, 0.83), Color(0.8, 0.8, 0.83)))
-	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: resume.add_theme_color_override(c, Color(0.05, 0.05, 0.06))
+	var white := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95))); resume.add_theme_stylebox_override("normal", white); resume.add_theme_stylebox_override("hover", ThemeBuilder.box(ThemeBuilder.c(Color(1, 1, 1)), ThemeBuilder.c(Color(1, 1, 1))))
+	resume.add_theme_stylebox_override("pressed", ThemeBuilder.box(ThemeBuilder.c(Color(0.8, 0.8, 0.83)), ThemeBuilder.c(Color(0.8, 0.8, 0.83))))
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: resume.add_theme_color_override(c, ThemeBuilder.on_accent())
 	get_viewport().size_changed.connect(_fit); _fit()
 	Net.character_updated.connect(func(_c): if visible and pages["Players"].visible: _refresh_players())
 	Net.player_character_changed.connect(func(_id, _c): if visible and pages["Players"].visible: _refresh_players())
@@ -116,7 +116,7 @@ func _refresh_players() -> void:
 	ids.sort()
 	for id in ids:
 		var info: Dictionary = Net.players[id]
-		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.1, 0.11), Color(0.19, 0.19, 0.21), 12)); players_list.add_child(card)
+		var card := PanelContainer.new(); card.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.11)), ThemeBuilder.c(Color(0.19, 0.19, 0.21)), 12)); players_list.add_child(card)
 		var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); card.add_child(v)
 		var top := HBoxContainer.new(); top.add_theme_constant_override("separation", 12); v.add_child(top)
 		top.add_child(AvatarChip.new().setup(str(info.get("name", "?")), Color(str(info.get("color", "#ffffff"))), 40, _face_color(info)))
@@ -147,8 +147,8 @@ func _report_page(parent: Node) -> void:
 	_section(p, "Details (optional)")
 	rep_details = TextEdit.new(); rep_details.placeholder_text = "Tell us what happened (max 300 characters)"; rep_details.custom_minimum_size = Vector2(0, 92); rep_details.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	rep_details.text_changed.connect(func(): if rep_details.text.length() > 300: rep_details.text = rep_details.text.substr(0, 300); rep_details.set_caret_column(300))
-	var tb := ThemeBuilder.box(Color(0.04, 0.04, 0.045)); rep_details.add_theme_stylebox_override("normal", tb); rep_details.add_theme_stylebox_override("focus", ThemeBuilder.box(Color(0.04, 0.04, 0.045), Color(0.5, 0.5, 0.55)))
-	rep_details.add_theme_color_override("font_color", Color(0.95, 0.95, 0.96)); rep_details.add_theme_color_override("font_placeholder_color", Color(1, 1, 1, 0.35)); p.add_child(rep_details)
+	var tb := ThemeBuilder.box(ThemeBuilder.c(Color(0.04, 0.04, 0.045))); rep_details.add_theme_stylebox_override("normal", tb); rep_details.add_theme_stylebox_override("focus", ThemeBuilder.box(ThemeBuilder.c(Color(0.04, 0.04, 0.045)), ThemeBuilder.c(Color(0.5, 0.5, 0.55))))
+	rep_details.add_theme_color_override("font_color", ThemeBuilder.c(Color(0.95, 0.95, 0.96))); rep_details.add_theme_color_override("font_placeholder_color", ThemeBuilder.c(Color(1, 1, 1, 0.35))); p.add_child(rep_details)
 	rep_send = Button.new(); rep_send.text = "Send report"; rep_send.custom_minimum_size = Vector2(0, 52); rep_send.pressed.connect(_send_report); p.add_child(rep_send)
 	rep_status = Label.new(); rep_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; rep_status.modulate = Color(1, 1, 1, 0.75); p.add_child(rep_status)
 
@@ -195,30 +195,6 @@ func _slider(parent: Node, label: String, lo: float, hi: float, step: float, val
 	var s := HSlider.new(); s.min_value = lo; s.max_value = hi; s.step = step; s.value = val; s.custom_minimum_size = Vector2(0, 34 if _mobile else 26)
 	s.value_changed.connect(func(v): cb.call(v); Settings.save_cfg(); Settings.changed.emit()); parent.add_child(s)
 
-## Graphics level as a row of 10 squares: click or drag across them (1 = lowest, 10 = highest).
-func _graphics_bar(parent: Node) -> void:
-	var head := Label.new(); parent.add_child(head)
-	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 4); parent.add_child(row)
-	var squares: Array = []
-	var paint := func():
-		head.text = "Graphics quality: %d / 10" % Settings.graphics
-		for k in squares.size():
-			var on: bool = k < Settings.graphics
-			var st := StyleBoxFlat.new(); st.set_corner_radius_all(4); st.set_border_width_all(2)
-			st.bg_color = Color(0.36, 0.5, 1.0) if on else Color(0.16, 0.17, 0.2); st.border_color = Color(0.55, 0.65, 1.0) if on else Color(0.34, 0.35, 0.4)
-			squares[k].add_theme_stylebox_override("panel", st)
-	var set_level := func(l: int):
-		if l == Settings.graphics: return
-		Settings.graphics = l; paint.call(); Settings.save_cfg()
-	for k in 10:
-		var sq := Panel.new(); sq.custom_minimum_size = Vector2(0, 40 if _mobile else 30); sq.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sq.mouse_filter = Control.MOUSE_FILTER_PASS
-		row.add_child(sq); squares.append(sq)
-	row.gui_input.connect(func(e: InputEvent):
-		var pressed: bool = (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and e.pressed) or (e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0) or (e is InputEventScreenDrag)
-		if pressed: set_level.call(clampi(int(e.position.x / maxf(row.size.x, 1.0) * 10.0) + 1, 1, 10)))
-	var hint := Label.new(); hint.text = "Low hides far-away things; 10 draws a very long distance."; hint.modulate = Color(1, 1, 1, 0.5); hint.add_theme_font_size_override("font_size", 13); parent.add_child(hint)
-	paint.call()
-
 func _check(parent: Node, text: String, val: bool, cb: Callable) -> void:
 	var c := CheckButton.new(); c.text = text; c.button_pressed = val; c.custom_minimum_size = Vector2(0, 46)
 	c.toggled.connect(func(on): cb.call(on); Settings.save_cfg(); Settings.changed.emit()); parent.add_child(c)
@@ -226,7 +202,8 @@ func _check(parent: Node, text: String, val: bool, cb: Callable) -> void:
 func _settings_page(parent: Node) -> void:
 	var p := VBoxContainer.new(); p.add_theme_constant_override("separation", 8); p.size_flags_horizontal = Control.SIZE_EXPAND_FILL; parent.add_child(p); pages["Settings"] = p
 	_section(p, "Graphics")
-	_graphics_bar(p)
+	var o := OptionButton.new(); for q in ["Low", "Medium", "High", "Ultra"]: o.add_item("Graphics quality: " + q)
+	o.selected = Settings.quality; o.custom_minimum_size = Vector2(0, 46); o.item_selected.connect(func(i): Settings.quality = i; Settings.save_cfg(); Settings.changed.emit()); p.add_child(o)
 	if not _mobile: _check(p, "Fullscreen", Settings.fullscreen, func(on): Settings.fullscreen = on; Settings.apply_window())
 	_check(p, "Show player names", Settings.show_names, func(on): Settings.show_names = on)
 	_section(p, "Audio")
@@ -258,7 +235,7 @@ func _help_page(parent: Node) -> void:
 	_section(p, "Controls")
 	for r in rows:
 		var h := HBoxContainer.new(); p.add_child(h)
-		var a := Label.new(); a.text = r[0]; a.size_flags_horizontal = Control.SIZE_EXPAND_FILL; a.add_theme_color_override("font_color", Color(0.9, 0.9, 0.93)); h.add_child(a)
+		var a := Label.new(); a.text = r[0]; a.size_flags_horizontal = Control.SIZE_EXPAND_FILL; a.add_theme_color_override("font_color", ThemeBuilder.c(Color(0.9, 0.9, 0.93))); h.add_child(a)
 		var b := Label.new(); b.text = r[1]; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(b)
 	_section(p, "Tips")
 	var t := Label.new(); t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

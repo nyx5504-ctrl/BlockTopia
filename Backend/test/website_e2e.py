@@ -131,6 +131,7 @@ try:
         pg.evaluate("localStorage.setItem('bt_update_snooze', JSON.stringify({version:'b', until: Date.now()-1}))")
         with pg.expect_navigation(timeout=8000): pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
         check(True, "after the hour the site updates by itself"); check(not errs, "no page errors in verify/update flows: " + "; ".join(errs[:3])); c2.close()
+        check(page.locator("[data-sec=language]").count() == 0 and page.locator("[data-panel=account] #langRow").count() == 1 and page.locator("[data-panel=account] [data-theme-pick]").count() == 2, "Language and Background (black/white) both live in Settings > Account; no Language tab")
         check(not errors, "no page errors: " + "; ".join(errors[:3]))
         b.close()
 finally:

@@ -70,7 +70,7 @@ var _update_status: Label
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ThemeBuilder.apply_to(get_tree(), true)
-	_bg = ColorRect.new(); _bg.color = ThemeBuilder.c(Color(0.035, 0.04, 0.065)); _bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_bg)
+	_bg = ColorRect.new(); _bg.color = ThemeBuilder.c(Color(0.043, 0.043, 0.047)); _bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_bg)
 	_scroll = ScrollContainer.new(); _scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; add_child(_scroll)
 	_center = CenterContainer.new(); _center.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _scroll.add_child(_center)
 	_col = VBoxContainer.new(); _col.add_theme_constant_override("separation", 14); _col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _center.add_child(_col)
@@ -192,8 +192,7 @@ func _add_button(label: String, callback: Callable, primary := false) -> Button:
 	b.add_theme_font_size_override("font_size", 16)
 	if primary:
 		b.add_theme_stylebox_override("normal", ThemeBuilder.accent_box()); b.add_theme_stylebox_override("hover", ThemeBuilder.accent_box(true)); b.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
-		b.add_theme_color_override("font_color", Color(1, 1, 1)); b.add_theme_color_override("font_hover_color", Color(1, 1, 1)); b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
-		b.custom_minimum_size = Vector2(0, 50)
+		b.add_theme_color_override("font_color", ThemeBuilder.on_accent()); b.add_theme_color_override("font_hover_color", ThemeBuilder.on_accent()); b.add_theme_color_override("font_pressed_color", ThemeBuilder.on_accent())
 	b.pressed.connect(callback); _col.add_child(b); return b
 
 func _add_tabs(detail := false) -> void:
@@ -235,7 +234,7 @@ func _show_auth(message := "") -> void:
 		b.add_theme_stylebox_override("normal", ThemeBuilder.box(ThemeBuilder.c(Color(0.12, 0.12, 0.14)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10))
 		b.add_theme_stylebox_override("hover", ThemeBuilder.box(ThemeBuilder.c(Color(0.16, 0.16, 0.18)), ThemeBuilder.c(Color(0.24, 0.24, 0.27)), 10))
 		b.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
-		b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
+		b.add_theme_color_override("font_pressed_color", ThemeBuilder.on_accent())
 		b.pressed.connect(_set_auth_mode.bind(mode)); modes.add_child(b)
 	_add_button("Continue with Google", _google_login)
 	var or_label := _add_text("or", 14, true); or_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -396,11 +395,10 @@ func _show_auth_shell() -> void:
 	if _auth_shell != null and is_instance_valid(_auth_shell): return
 	if _col.get_parent() == _center: _center.remove_child(_col)
 	_auth_shell = PanelContainer.new()
-	var shell_style := ThemeBuilder.box(ThemeBuilder.c(Color(0.075, 0.083, 0.12)), ThemeBuilder.c(Color(0.19, 0.205, 0.29)), 26); shell_style.shadow_color = Color(0.25, 0.3, 0.9, 0.18); shell_style.shadow_size = 40
-	_auth_shell.add_theme_stylebox_override("panel", shell_style)
+	_auth_shell.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.09, 0.09, 0.105)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 16))
 	_center.add_child(_auth_shell)
 	_auth_shell_margin = MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]: _auth_shell_margin.add_theme_constant_override("margin_" + side, 28)
+	for side in ["left", "right", "top", "bottom"]: _auth_shell_margin.add_theme_constant_override("margin_" + side, 22)
 	_auth_shell.add_child(_auth_shell_margin); _auth_shell_margin.add_child(_col)
 
 func _hide_auth_shell() -> void:
@@ -423,7 +421,7 @@ func _add_app_header() -> void:
 func _add_update_banner() -> void:
 	if not Settings.update_available or (_update_notice != null and is_instance_valid(_update_notice)): return
 	_update_notice = PanelContainer.new(); _update_notice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(Color(0.1, 0.13, 0.26), ThemeBuilder.ACCENT, 14)); _col.add_child(_update_notice)
+	_update_notice.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.11, 0.16, 0.25)), ThemeBuilder.c(Color(0.24, 0.42, 0.7)), 12)); _col.add_child(_update_notice)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); _update_notice.add_child(row)
 	var note := Label.new(); note.text = "Update %s is available. Download and install it, then reopen BlockTopia." % Settings.update_version; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(note)
 	var get_update := Button.new(); get_update.text = "Download"; get_update.custom_minimum_size = Vector2(100, 44); get_update.pressed.connect(_open_update_download); row.add_child(get_update)
@@ -438,15 +436,15 @@ class VerifyRing extends Control:
 	func _draw() -> void:
 		var c := size * 0.5; var r := minf(size.x, size.y) * 0.5 - 7.0
 		draw_arc(c, r, 0.0, TAU, 72, Color(1, 1, 1, 0.1), 9.0, true)
-		if progress > 0.0: draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * progress, 72, ThemeBuilder.ACCENT, 9.0, true)
+		if progress > 0.0: draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * progress, 72, ThemeBuilder.c(ThemeBuilder.ACCENT), 9.0, true)
 
 func _overlay_card(width := 400.0) -> Dictionary:
 	var layer := Control.new(); layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.mouse_filter = Control.MOUSE_FILTER_STOP; add_child(layer)
 	var dim := ColorRect.new(); dim.color = Color(0.02, 0.02, 0.05, 0.8); dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.add_child(dim)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.add_child(center)
 	var card := PanelContainer.new(); card.custom_minimum_size = Vector2(minf(width, get_viewport_rect().size.x - 32.0), 0)
-	var sb := ThemeBuilder.box(Color(0.07, 0.078, 0.11), Color(0.2, 0.22, 0.3), 24)
-	sb.shadow_color = Color(0, 0, 0, 0.5); sb.shadow_size = 30; sb.content_margin_left = 26; sb.content_margin_right = 26; sb.content_margin_top = 28; sb.content_margin_bottom = 24
+	var sb := ThemeBuilder.box(ThemeBuilder.c(Color(0.09, 0.09, 0.105)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 16)
+	sb.content_margin_left = 26; sb.content_margin_right = 26; sb.content_margin_top = 28; sb.content_margin_bottom = 24
 	card.add_theme_stylebox_override("panel", sb); center.add_child(card)
 	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 12); card.add_child(box)
 	return {"layer": layer, "box": box}
@@ -480,7 +478,7 @@ func _verify_email_gate() -> bool:
 	var state_label := _centered_label(box, "", 15, true)
 	var resend := Button.new(); resend.text = "Send a new link"; resend.custom_minimum_size = Vector2(0, 46); resend.visible = false
 	resend.add_theme_stylebox_override("normal", ThemeBuilder.accent_box()); resend.add_theme_stylebox_override("hover", ThemeBuilder.accent_box(true)); resend.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
-	resend.add_theme_color_override("font_color", Color(1, 1, 1)); resend.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	resend.add_theme_color_override("font_color", ThemeBuilder.on_accent()); resend.add_theme_color_override("font_hover_color", ThemeBuilder.on_accent())
 	resend.pressed.connect(_on_verify_resend); box.add_child(resend)
 	var back := Button.new(); back.text = "Back to log in"; back.custom_minimum_size = Vector2(0, 44); back.pressed.connect(_on_verify_back); box.add_child(back)
 	if mail.text == "": mail.visible = false
@@ -534,7 +532,7 @@ func _consider_update_prompt() -> void:
 	_centered_label(box, "Would you like to see it?", 17, true)
 	var yes := Button.new(); yes.text = "Yes"; yes.custom_minimum_size = Vector2(0, 48)
 	yes.add_theme_stylebox_override("normal", ThemeBuilder.accent_box()); yes.add_theme_stylebox_override("hover", ThemeBuilder.accent_box(true)); yes.add_theme_stylebox_override("pressed", ThemeBuilder.accent_box())
-	yes.add_theme_color_override("font_color", Color(1, 1, 1)); yes.add_theme_color_override("font_hover_color", Color(1, 1, 1)); yes.pressed.connect(_run_update); box.add_child(yes)
+	yes.add_theme_color_override("font_color", ThemeBuilder.on_accent()); yes.add_theme_color_override("font_hover_color", ThemeBuilder.on_accent()); yes.pressed.connect(_run_update); box.add_child(yes)
 	var later := Button.new(); later.text = "Later (1 hour)"; later.custom_minimum_size = Vector2(0, 44)
 	later.pressed.connect(_update_later); box.add_child(later)
 	_centered_label(box, "If you wait, BlockTopia updates by itself after 1 hour." if Settings.is_pc() else "If you wait, we'll open the update download after 1 hour.", 13, true)
@@ -612,8 +610,9 @@ func _friends_loop(holder: VBoxContainer, gen: int) -> void:
 		await get_tree().create_timer(30.0).timeout
 
 func _fill_friend_strip(holder: VBoxContainer, list: Array) -> void:
+	FriendFace.live_3d = 0
 	var scroll := ScrollContainer.new(); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO; scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(0, 92); scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL; holder.add_child(scroll)
+	scroll.custom_minimum_size = Vector2(0, 100); scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL; holder.add_child(scroll)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); scroll.add_child(row)
 	for f in list:
 		if f is Dictionary: row.add_child(_friend_card(f))
@@ -621,7 +620,7 @@ func _fill_friend_strip(holder: VBoxContainer, list: Array) -> void:
 	add.pressed.connect(_show_friends if _screen != "friends" else _open_website_friends); row.add_child(add)
 
 func _friend_card(f: Dictionary) -> Button:
-	var b := Button.new(); b.custom_minimum_size = Vector2(236, 76); b.focus_mode = Control.FOCUS_NONE
+	var b := Button.new(); b.custom_minimum_size = Vector2(246, 82); b.focus_mode = Control.FOCUS_NONE
 	var normal := ThemeBuilder.box(ThemeBuilder.c(Color(0.1, 0.1, 0.12)), ThemeBuilder.c(Color(0.24, 0.24, 0.28)), 14)
 	var hover := ThemeBuilder.box(ThemeBuilder.c(Color(0.15, 0.15, 0.18)), ThemeBuilder.c(Color(0.34, 0.34, 0.4)), 14)
 	for st in ["normal", "focus"]: b.add_theme_stylebox_override(st, normal)
@@ -631,7 +630,7 @@ func _friend_card(f: Dictionary) -> Button:
 	b.add_child(margin)
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 12); row.mouse_filter = Control.MOUSE_FILTER_IGNORE; margin.add_child(row)
 	var character: Dictionary = _normalize_character(f.get("character", {}))
-	row.add_child(FriendFace.new().setup(character, bool(f.get("online", false)), 52))
+	row.add_child(FriendFace.new().setup(character, bool(f.get("online", false)), 58, str(f.get("username", "Player")), str(f.get("avatarColor", "#2f6fd6"))))
 	var col := VBoxContainer.new(); col.alignment = BoxContainer.ALIGNMENT_CENTER; col.mouse_filter = Control.MOUSE_FILTER_IGNORE; col.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(col)
 	var name := Label.new(); name.text = str(f.get("username", "Player")); name.add_theme_font_size_override("font_size", 17); name.clip_text = true; name.mouse_filter = Control.MOUSE_FILTER_IGNORE; col.add_child(name)
 	var sub := Label.new(); sub.mouse_filter = Control.MOUSE_FILTER_IGNORE; sub.add_theme_font_size_override("font_size", 14)
@@ -665,7 +664,7 @@ func _open_friend(f: Dictionary) -> void:
 	var w := minf(370.0, get_viewport_rect().size.x)
 	var panel := PanelContainer.new(); panel.name = "Panel"; panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
 	panel.offset_left = -w; panel.offset_right = 0.0
-	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.085, 0.085, 0.1)), ThemeBuilder.c(Color(0.22, 0.22, 0.26)), 0)); layer.add_child(panel)
+	panel.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.075, 0.075, 0.082)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 0)); layer.add_child(panel)
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 16)
 	panel.add_child(margin)
@@ -741,7 +740,7 @@ func _chat_add_bubble(m: Dictionary) -> void:
 	var mine := str(m.get("from", "")) == _uid()
 	var row := HBoxContainer.new(); row.alignment = BoxContainer.ALIGNMENT_END if mine else BoxContainer.ALIGNMENT_BEGIN; _chat_box.add_child(row)
 	var bubble := PanelContainer.new()
-	bubble.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.16, 0.3, 0.55) if mine else Color(0.16, 0.16, 0.19)), ThemeBuilder.c(Color(0.2, 0.2, 0.24)), 10)); row.add_child(bubble)
+	bubble.add_theme_stylebox_override("panel", ThemeBuilder.box(ThemeBuilder.c(Color(0.22, 0.22, 0.26) if mine else Color(0.13, 0.13, 0.15)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10)); row.add_child(bubble)
 	var text := str(m.get("text", ""))
 	var label := Label.new(); label.text = text; label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; label.custom_minimum_size = Vector2(minf(230.0, 9.0 * text.length() + 22.0), 0); bubble.add_child(label)
 
@@ -865,7 +864,6 @@ func _show_settings(section := "") -> void:
 	match _settings_section:
 		"security": await _build_security(body, gen)
 		"privacy": await _build_privacy(body, gen)
-		"language": _build_language(body)
 		_: _build_account(body)
 	if gen == _settings_gen and _screen == "settings": _fit()
 
@@ -874,7 +872,7 @@ func _add_settings_tabs() -> void:
 	var group := ButtonGroup.new()
 	var off := ThemeBuilder.box(ThemeBuilder.c(Color(0.12, 0.12, 0.14)), ThemeBuilder.c(Color(0.22, 0.22, 0.25)), 10)
 	var on := ThemeBuilder.box(ThemeBuilder.c(Color(0.93, 0.93, 0.95)), ThemeBuilder.c(Color(0.93, 0.93, 0.95)), 10)
-	for item in [["account", "Account"], ["security", "Security"], ["privacy", "Privacy"], ["language", "Language"]]:
+	for item in [["account", "Account"], ["security", "Security"], ["privacy", "Privacy"]]:
 		var b := Button.new(); b.text = str(item[1]); b.toggle_mode = true; b.button_group = group; b.custom_minimum_size = Vector2(110, 42)
 		b.add_theme_stylebox_override("normal", off); b.add_theme_stylebox_override("hover", off); b.add_theme_stylebox_override("pressed", on); b.add_theme_stylebox_override("hover_pressed", on)
 		b.add_theme_color_override("font_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06))); b.add_theme_color_override("font_hover_pressed_color", ThemeBuilder.c(Color(0.05, 0.05, 0.06)))
@@ -942,6 +940,7 @@ func _build_account(body: Node) -> void:
 	var desc_status := _settings_note(about, "")
 	var desc_save := _settings_button(about, "Save description", Callable())
 	desc_save.pressed.connect(_save_description.bind(desc_edit, desc_status, desc_save))
+	_add_language_and_background(body)
 	var password := _settings_card(body, "Password")
 	var open := _settings_button(password, "Change password", Callable())
 	var form := VBoxContainer.new(); form.visible = false; form.add_theme_constant_override("separation", 8); password.add_child(form)
@@ -1048,7 +1047,7 @@ func _save_setting_choice(index: int, items: Array, field: String, status: Label
 	if is_instance_valid(status): status.text = "Saved." if result.ok else "Couldn't save. Try again."
 
 # ---- Language + Background (same choices as the website; saved to your account so both stay in sync) ----
-func _build_language(body: Node) -> void:
+func _add_language_and_background(body: Node) -> void:
 	var card := _settings_card(body, "Language")
 	var status := _settings_note(card, "")
 	var pick := OptionButton.new(); pick.custom_minimum_size = Vector2(0, 46); pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL; card.add_child(pick)

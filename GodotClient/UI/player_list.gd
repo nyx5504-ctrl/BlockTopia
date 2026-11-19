@@ -3,6 +3,7 @@ extends CanvasLayer
 ## Roblox-style player list (top-right): every player on its own translucent row with an avatar badge and name.
 ## Your own row is highlighted. Click a name to open a small tab beside it: Add Friend, Block, Report. Press Tab (or the - button) to hide the list.
 signal report_requested(id: int)
+signal toggled(shown: bool)
 const ROW_H := 36
 var panel: PanelContainer
 var rows: VBoxContainer
@@ -45,6 +46,10 @@ func _row_style(c: Color, r := 8) -> StyleBoxFlat:
 
 func toggle() -> void:
 	_collapsed = not _collapsed; collapse.text = "▸" if _collapsed else "▾"; rows.visible = not _collapsed; popup.visible = false
+	toggled.emit(not _collapsed)
+
+func is_shown() -> bool:
+	return not _collapsed
 
 func _build_popup(root: Control) -> void:
 	popup = PanelContainer.new(); popup.visible = false; popup.custom_minimum_size = Vector2(180, 0)
